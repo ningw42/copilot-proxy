@@ -172,7 +172,7 @@ const AnthropicThinkingConfigSchema = z.discriminatedUnion('type', [
 ])
 
 const AnthropicOutputConfigSchema = z.object({
-  effort: z.enum(['low', 'medium', 'high', 'max']).optional(),
+  effort: z.enum(['low', 'medium', 'high', 'xhigh', 'max']).optional(),
   format: z.object({
     type: z.string(),
   }).passthrough().optional(),

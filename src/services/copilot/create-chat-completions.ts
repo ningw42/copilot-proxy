@@ -178,7 +178,7 @@ export interface ChatCompletionsPayload {
     | { type: 'function', function: { name: string } }
     | null
   user?: string | null
-  reasoning_effort?: 'low' | 'medium' | 'high' | 'max' | null
+  reasoning_effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max' | null
   parallel_tool_calls?: boolean | null
   snippy?: { enabled: boolean } | null
 }

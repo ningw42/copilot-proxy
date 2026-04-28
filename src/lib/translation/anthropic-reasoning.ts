@@ -3,9 +3,9 @@ import type { ModelConfig } from '~/lib/model-config'
 import type { ChatCompletionsPayload } from '~/services/copilot/create-chat-completions'
 import type { ResponsesPayload } from '~/services/copilot/create-responses'
 
-export type AnthropicReasoningEffort = 'low' | 'medium' | 'high' | 'max'
+export type AnthropicReasoningEffort = 'low' | 'medium' | 'high' | 'xhigh' | 'max'
 
-function mapThinkingBudgetToEffort(budgetTokens: number): Exclude<AnthropicReasoningEffort, 'max'> {
+function mapThinkingBudgetToEffort(budgetTokens: number): Exclude<AnthropicReasoningEffort, 'xhigh' | 'max'> {
   if (budgetTokens <= 4_096) {
     return 'low'
   }
@@ -101,7 +101,7 @@ function normalizeAnthropicReasoningEffort(
     return 'max'
   }
 
-  if (effort === 'low' || effort === 'medium' || effort === 'high' || effort === 'max') {
+  if (effort === 'low' || effort === 'medium' || effort === 'high' || effort === 'xhigh' || effort === 'max') {
     return effort
   }
 

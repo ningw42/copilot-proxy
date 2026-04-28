@@ -54,7 +54,7 @@ const chatCompletionRequestSchema = z.object({
   tools: z.array(z.any()).optional(),
   tool_choice: z.union([z.string(), z.object({})]).optional(),
   user: z.string().optional(),
-  reasoning_effort: z.enum(['low', 'medium', 'high', 'max']).optional().nullable(),
+  reasoning_effort: z.enum(['low', 'medium', 'high', 'xhigh', 'max']).optional().nullable(),
   parallel_tool_calls: z.boolean().optional().nullable(),
 })
 
@@ -1063,6 +1063,19 @@ describe('Model variant routing', () => {
     expect(result.reasoning_effort).toBe('high')
     expect(result.tool_choice).toBeUndefined()
     expect(result.parallel_tool_calls).toBe(false)
+  })
+
+  test('claude-opus-4.7 1m variant accepts explicit xhigh effort', () => {
+    const result = translateToOpenAI(
+      makePayload('claude-opus-4-7', {
+        output_config: { effort: 'xhigh' },
+      }),
+      { anthropicBeta: 'context-1m-2025-08-07' },
+    )
+
+    expect(result.model).toBe('claude-opus-4.7-1m-internal')
+    expect(result.reasoning_effort).toBe('xhigh')
+    expect(isValidChatCompletionRequest(result)).toBe(true)
   })
 
   test('applyModelVariant directly - no variant for unknown model', () => {

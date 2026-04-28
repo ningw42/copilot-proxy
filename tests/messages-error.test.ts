@@ -123,6 +123,17 @@ describe('messages error paths', () => {
     expect(result.success).toBe(true)
   })
 
+  test('output_config.effort xhigh is accepted for Copilot Claude compatibility', () => {
+    const result = AnthropicMessagesPayloadSchema.safeParse({
+      model: 'claude-opus-4-7',
+      max_tokens: 100,
+      messages: [{ role: 'user', content: 'hi' }],
+      output_config: { effort: 'xhigh' },
+    })
+
+    expect(result.success).toBe(true)
+  })
+
   test('invalid thinking.budget_tokens type returns 400', async () => {
     const res = await server.request('/v1/messages', {
       method: 'POST',

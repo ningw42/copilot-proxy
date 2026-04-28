@@ -383,6 +383,33 @@ describe('messages route upstream adaptation', () => {
     expect(body.model).toBe('claude-opus-4-7')
   })
 
+  test('Claude Opus 4.7 1m beta forwards xhigh effort to internal 1m upstream model', async () => {
+    const res = await server.request('/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'anthropic-beta': 'context-1m-2025-08-07',
+      },
+      body: JSON.stringify({
+        model: 'claude-opus-4-7',
+        max_tokens: 64,
+        output_config: { effort: 'xhigh' },
+        messages: [{ role: 'user', content: 'Say hello.' }],
+      }),
+    })
+
+    expect(res.status).toBe(200)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    const forwardedPayload = JSON.parse(String(init?.body)) as {
+      model?: string
+      output_config?: { effort?: string }
+    }
+    expect(forwardedPayload.model).toBe('claude-opus-4.7-1m-internal')
+    expect(forwardedPayload.output_config?.effort).toBe('xhigh')
+  })
+
   test('Claude streaming responses are piped through natively', async () => {
     const res = await server.request('/v1/messages', {
       method: 'POST',
