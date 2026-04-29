@@ -13,7 +13,9 @@ import { usageRoute } from './routes/usage/route'
 export const server = new Hono()
 
 server.use(logger())
-server.use(cors())
+server.use(cors({
+  exposeHeaders: ['x-request-id', 'retry-after'],
+}))
 
 server.get('/', c => c.text('Server running'))
 
