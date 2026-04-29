@@ -86,6 +86,26 @@ test('treats typed message items as messages for vision detection', async () => 
   expect(headers['copilot-vision-request']).toBe('true')
 })
 
+test('strips unsupported service_tier before forwarding upstream', async () => {
+  for (const serviceTier of ['auto', 'flex', 'fast'] as const) {
+    fetchMock.mockClear()
+    const payload: ResponsesPayload = {
+      model: 'gpt-test',
+      input: 'Reply with the single word OK.',
+      service_tier: serviceTier,
+    }
+
+    await createResponses(payload)
+
+    const body = JSON.parse((fetchMock.mock.calls[0][1] as unknown as { body: string }).body) as Record<string, unknown>
+    expect(body).toEqual({
+      model: 'gpt-test',
+      input: 'Reply with the single word OK.',
+    })
+    expect(payload.service_tier).toBe(serviceTier)
+  }
+})
+
 test('summarizes inline image payloads without expanding them', () => {
   const firstDataUrl = 'data:image/png;base64,aaaa'
   const secondDataUrl = 'data:image/png;base64,bbbbbb'

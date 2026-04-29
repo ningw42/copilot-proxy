@@ -28,9 +28,10 @@ export async function createResponses(
   if (!state.copilotToken)
     throw new Error('Copilot token not found')
 
-  const inputArray = Array.isArray(payload.input) ? payload.input : []
+  const upstreamPayload = sanitizeResponsesPayloadForCopilotBackend(payload)
+  const inputArray = Array.isArray(upstreamPayload.input) ? upstreamPayload.input : []
   const hasVision = inputArray.length > 0 && hasVisionInput(inputArray)
-  const payloadSummary = summarizeResponsesPayload(payload)
+  const payloadSummary = summarizeResponsesPayload(upstreamPayload)
 
   const isAgentCall = inputArray.some(item =>
     (isMessageInput(item) && item.role === 'assistant')
@@ -42,7 +43,7 @@ export async function createResponses(
     'X-Initiator': isAgentCall ? 'agent' : 'user',
   }
 
-  const body = JSON.stringify(payload)
+  const body = JSON.stringify(upstreamPayload)
   consola.debug('Forwarding Responses API request:', {
     ...payloadSummary,
     bodyChars: body.length,
@@ -59,7 +60,7 @@ export async function createResponses(
     endpoint: '/responses',
     requestStartedAt,
     status: response.status,
-    stream: Boolean(payload.stream),
+    stream: Boolean(upstreamPayload.stream),
   })
 
   if (!response.ok) {
@@ -82,7 +83,7 @@ export async function createResponses(
     throw new HTTPError('Failed to create responses', response)
   }
 
-  if (payload.stream) {
+  if (upstreamPayload.stream) {
     const instrumentedStream = instrumentCopilotEventStream(events(response), {
       endpoint: '/responses',
       requestStartedAt,
@@ -96,6 +97,17 @@ export async function createResponses(
     requestStartedAt,
   })
   return { body: json, headers: response.headers }
+}
+
+function sanitizeResponsesPayloadForCopilotBackend(payload: ResponsesPayload): ResponsesPayload {
+  if (!Object.hasOwn(payload, 'service_tier')) {
+    return payload
+  }
+
+  consola.debug('Stripping service_tier (unsupported by Copilot /responses backend)')
+  const upstreamPayload = { ...payload }
+  delete upstreamPayload.service_tier
+  return upstreamPayload
 }
 
 export async function forwardResponsesEndpoint(

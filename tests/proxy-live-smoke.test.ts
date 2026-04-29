@@ -472,6 +472,19 @@ describeLive('Proxy live smoke', () => {
       expect(body.status).toBe('completed')
     }, TIMEOUT)
 
+    test('service_tier=auto is stripped for Copilot compatibility → 200', async () => {
+      const res = await sendJsonRequest('/v1/responses', {
+        model: RESPONSES_MODEL,
+        input: 'Reply with the single word OK.',
+        max_output_tokens: 32,
+        service_tier: 'auto',
+      })
+
+      expect(res.status).toBe(200)
+      const body = await parseJson<Record<string, unknown>>(res)
+      expect(body.status).toBe('completed')
+    }, TIMEOUT)
+
     test('stateful/background Responses params → clean Copilot rejection', async () => {
       const cases = [
         {
@@ -485,10 +498,6 @@ describeLive('Proxy live smoke', () => {
         {
           body: { background: true },
           pattern: /background/i,
-        },
-        {
-          body: { service_tier: 'auto' },
-          pattern: /service_tier|service tier/i,
         },
       ]
 
