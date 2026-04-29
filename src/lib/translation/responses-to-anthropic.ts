@@ -33,6 +33,7 @@ import type {
 
 import consola from 'consola'
 import { JSONResponseError } from '~/lib/error'
+import { isRecord } from '~/lib/type-guards'
 import { logLossyAnthropicCompatibility } from './anthropic-compat'
 import {
   createAnthropicErrorPayloadFromResponses,
@@ -561,10 +562,6 @@ function normalizeResponsesJsonSchemaFormat(
     schema,
     ...(typeof name === 'string' && name.trim().length > 0 && { name }),
   }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null
 }
 
 // ─── Type guards (T10) ─────────────────────────────────────────────

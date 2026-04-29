@@ -23,7 +23,7 @@ import {
 } from './model-variants'
 import {
   createAnthropicMessagesWithThinkingSignatureRetry,
-  normalizeAnthropicThinkingForCopilot,
+  normalizeAdaptiveThinkingForCopilot,
   overrideAnthropicResponseModel,
   overrideAnthropicStreamEventModel,
   prepareAnthropicPayloadForTranslatedBackends,
@@ -81,7 +81,7 @@ export async function handleCompletion(c: Context) {
     }
   }
 
-  normalizeAnthropicThinkingForCopilot(anthropicPayload)
+  normalizeAdaptiveThinkingForCopilot(anthropicPayload)
 
   const route = resolveRoute('anthropic-messages', effectiveModel, throwAnthropicInvalidRequestError)
 

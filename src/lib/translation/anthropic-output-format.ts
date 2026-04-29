@@ -1,16 +1,13 @@
 import type { AnthropicMessagesPayload } from './types'
 import type { ResponsesPayload } from '~/services/copilot/create-responses'
 import consola from 'consola'
+import { isRecord } from '~/lib/type-guards'
 
 function getAnthropicOutputFormatType(
   outputConfig: AnthropicMessagesPayload['output_config'],
 ): string | undefined {
   const format = outputConfig?.format
   return format && typeof format.type === 'string' ? format.type : undefined
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null
 }
 
 interface NormalizedJsonSchemaFormat {

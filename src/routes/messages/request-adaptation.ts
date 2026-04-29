@@ -4,6 +4,7 @@ import consola from 'consola'
 import { HTTPError } from '~/lib/error'
 import { assertCopilotCompatibleAnthropicRequest, logLossyAnthropicCompatibility, throwAnthropicInvalidRequestError } from '~/lib/translation/anthropic-compat'
 import { expandDocumentBlocks, normalizeLegacyDocumentTextSources } from '~/lib/translation/anthropic-documents'
+import { isRecord } from '~/lib/type-guards'
 import { createAnthropicMessages } from '~/services/copilot/create-anthropic-messages'
 
 const INVALID_THINKING_SIGNATURE_PATTERN = /invalid [`'"]?signature[`'"]? in [`'"]?thinking[`'"]? block/i
@@ -117,7 +118,7 @@ export function sanitizeForCopilotBackend(payload: AnthropicMessagesPayload): vo
   }
 }
 
-export function normalizeAnthropicThinkingForCopilot(
+export function normalizeAdaptiveThinkingForCopilot(
   payload: AnthropicMessagesPayload,
 ): void {
   if (!payload.thinking || typeof payload.thinking !== 'object' || !('type' in payload.thinking)) {
@@ -224,7 +225,7 @@ function extractUpstreamErrorMessage(payload: unknown): string | undefined {
   return undefined
 }
 
-function stripAssistantThinkingBlocks(
+export function stripAssistantThinkingBlocks(
   payload: AnthropicMessagesPayload,
 ): {
   payload: AnthropicMessagesPayload
@@ -278,8 +279,4 @@ function stripAssistantThinkingBlocks(
     strippedBlocks,
     droppedAssistantMessages,
   }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null
 }
