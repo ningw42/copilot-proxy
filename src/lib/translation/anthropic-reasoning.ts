@@ -1,6 +1,5 @@
 import type { AnthropicMessagesPayload } from './types'
 import type { ModelConfig } from '~/lib/model-config'
-import type { ChatCompletionsPayload } from '~/services/copilot/create-chat-completions'
 import type { ResponsesPayload } from '~/services/copilot/create-responses'
 
 export type AnthropicReasoningEffort = 'low' | 'medium' | 'high' | 'xhigh' | 'max'
@@ -35,33 +34,6 @@ export function resolveAnthropicReasoningEffort(
 
   if (payload.thinking?.type === 'adaptive') {
     return normalizeAnthropicReasoningEffort(modelConfig.defaultReasoningEffort)
-  }
-
-  return undefined
-}
-
-export function mapAnthropicReasoningToChatCompletions(
-  effort: AnthropicReasoningEffort | undefined,
-  modelConfig: ModelConfig,
-): ChatCompletionsPayload['reasoning_effort'] | undefined {
-  if (!effort) {
-    return undefined
-  }
-
-  const supported = new Set(modelConfig.supportedReasoningEfforts ?? [])
-  if (supported.size === 0) {
-    return undefined
-  }
-
-  if (supported.has(effort)) {
-    return effort
-  }
-
-  if (effort === 'max') {
-    // Preserve explicit max-effort requests so Copilot can return its
-    // upstream-aligned invalid_reasoning_effort error instead of silently
-    // downgrading the request to high.
-    return 'max'
   }
 
   return undefined

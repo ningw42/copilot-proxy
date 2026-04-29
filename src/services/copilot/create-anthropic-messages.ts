@@ -21,27 +21,27 @@ import { HTTPError } from '~/lib/error'
 import { state } from '~/lib/state'
 import { instrumentCopilotEventStream, logUpstreamHeadersReceived, logUpstreamRequestCompleted } from './stream-metrics'
 
+export interface AnthropicCountTokensResponse {
+  input_tokens: number
+}
+
+interface AnthropicRequestOptions {
+  signal?: AbortSignal
+  anthropicBeta?: string
+}
+
 export async function createAnthropicMessages(
   payload: AnthropicMessagesPayload,
-  options?: { signal?: AbortSignal, anthropicBeta?: string },
+  options?: AnthropicRequestOptions,
 ) {
   if (!state.copilotToken)
     throw new Error('Copilot token not found')
-
-  const enableVision = payload.messages.some(messageContainsVisionInput)
-  const isAgentCall = payload.messages.some(messageContinuesAgentLoop)
-
-  const headers: Record<string, string> = {
-    ...copilotHeaders(state, enableVision),
-    'X-Initiator': isAgentCall ? 'agent' : 'user',
-    ...(options?.anthropicBeta ? { 'anthropic-beta': options.anthropicBeta } : {}),
-  }
 
   const requestStartedAt = Date.now()
   const body = JSON.stringify(payload)
   const response = await fetch(`${copilotBaseUrl(state)}/v1/messages`, {
     method: 'POST',
-    headers,
+    headers: buildAnthropicRequestHeaders(payload, options),
     body,
     signal: options?.signal,
   })
@@ -71,6 +71,54 @@ export async function createAnthropicMessages(
     requestStartedAt,
   })
   return { body: json, headers: response.headers, streaming: false as const }
+}
+
+export async function createAnthropicCountTokens(
+  payload: AnthropicMessagesPayload,
+  options?: AnthropicRequestOptions,
+) {
+  if (!state.copilotToken)
+    throw new Error('Copilot token not found')
+
+  const requestStartedAt = Date.now()
+  const response = await fetch(`${copilotBaseUrl(state)}/v1/messages/count_tokens`, {
+    method: 'POST',
+    headers: buildAnthropicRequestHeaders(payload, options),
+    body: JSON.stringify(payload),
+    signal: options?.signal,
+  })
+  logUpstreamHeadersReceived({
+    endpoint: '/v1/messages/count_tokens',
+    requestStartedAt,
+    status: response.status,
+    stream: false,
+  })
+
+  if (!response.ok) {
+    consola.error('Failed to count anthropic message tokens', response)
+    throw new HTTPError('Failed to count anthropic message tokens', response)
+  }
+
+  const json = (await response.json()) as AnthropicCountTokensResponse
+  logUpstreamRequestCompleted({
+    endpoint: '/v1/messages/count_tokens',
+    requestStartedAt,
+  })
+  return { body: json, headers: response.headers }
+}
+
+function buildAnthropicRequestHeaders(
+  payload: AnthropicMessagesPayload,
+  options?: AnthropicRequestOptions,
+): Record<string, string> {
+  const enableVision = payload.messages.some(messageContainsVisionInput)
+  const isAgentCall = payload.messages.some(messageContinuesAgentLoop)
+
+  return {
+    ...copilotHeaders(state, enableVision),
+    'X-Initiator': isAgentCall ? 'agent' : 'user',
+    ...(options?.anthropicBeta ? { 'anthropic-beta': options.anthropicBeta } : {}),
+  }
 }
 
 function messageContainsVisionInput(

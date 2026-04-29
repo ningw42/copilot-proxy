@@ -91,6 +91,26 @@ describe('messages error paths', () => {
     expect(json.error.type).toBe('invalid_request_error')
   })
 
+  test('count_tokens without Copilot token returns an Anthropic error', async () => {
+    const res = await server.request('/v1/messages/count_tokens', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-opus-4.6',
+        messages: [{ role: 'user', content: 'hi' }],
+      }),
+    })
+
+    expect(res.status).toBe(500)
+    const json = await res.json() as {
+      type: string
+      error: { type: string, message: string }
+    }
+    expect(json.type).toBe('error')
+    expect(json.error.type).toBe('api_error')
+    expect(json.error.message).toContain('Copilot token not found')
+  })
+
   test('missing "max_tokens" field is accepted by schema for compatibility', () => {
     const result = AnthropicMessagesPayloadSchema.safeParse({
       model: 'claude-sonnet-4',

@@ -24,6 +24,15 @@ async function defaultFetchMock(url: string, init?: RequestInit) {
     })
   }
 
+  if (url.endsWith('/v1/messages/count_tokens')) {
+    return new Response(JSON.stringify({
+      input_tokens: 26,
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
+
   // Native Anthropic passthrough for Claude models
   if (url.endsWith('/v1/messages')) {
     const forwardedPayload = init?.body
@@ -1149,7 +1158,7 @@ describe('messages route upstream adaptation', () => {
     expect(url).toBe('https://api.githubcopilot.com/v1/messages')
   })
 
-  test('count_tokens with document blocks returns default when model not found', async () => {
+  test('count_tokens with document blocks is forwarded natively without local expansion', async () => {
     const res = await server.request('/v1/messages/count_tokens', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1174,12 +1183,38 @@ describe('messages route upstream adaptation', () => {
       }),
     })
 
-    // Model not found in test env → early return with default, no document expansion attempted
     expect(res.status).toBe(200)
-    expect(fetchMock).not.toHaveBeenCalled()
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    expect(url).toBe('https://api.githubcopilot.com/v1/messages/count_tokens')
+    const forwardedPayload = JSON.parse(String(init.body)) as { messages: Array<{ content: Array<{ type: string }> }> }
+    expect(forwardedPayload.messages[0].content[0].type).toBe('document')
 
     const body = await res.json() as { input_tokens?: number }
-    expect(body.input_tokens).toBe(1)
+    expect(body.input_tokens).toBe(26)
+  })
+
+  test('count_tokens applies model variants and strips proxy-consumed beta features', async () => {
+    const res = await server.request('/v1/messages/count_tokens', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'anthropic-beta': 'claude-code-2025-01-01, fast-mode-2026-02-01',
+      },
+      body: JSON.stringify({
+        model: 'claude-opus-4.6',
+        messages: [{ role: 'user', content: 'Count this.' }],
+      }),
+    })
+
+    expect(res.status).toBe(200)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    expect(url).toBe('https://api.githubcopilot.com/v1/messages/count_tokens')
+    const forwardedPayload = JSON.parse(String(init.body)) as { model?: string }
+    expect(forwardedPayload.model).toBe('claude-opus-4.6-fast')
+    const headers = init.headers as Record<string, string>
+    expect(headers['anthropic-beta']).toBe('claude-code-2025-01-01')
   })
 })
 

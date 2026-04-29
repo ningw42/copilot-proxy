@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import { getModelConfig, isThinkingModeModel } from '../src/lib/model-config'
+import { getModelConfig } from '../src/lib/model-config'
 
 describe('getModelConfig', () => {
   test('should return config with enableCacheControl and defaultReasoningEffort for claude-opus-4.6', () => {
@@ -149,47 +149,5 @@ describe('getModelConfig', () => {
   test('should match gemini models via prefix', () => {
     const config = getModelConfig('gemini-3.1-pro-preview')
     expect(config.supportedApis).toEqual(['chat-completions'])
-  })
-})
-
-describe('isThinkingModeModel', () => {
-  test('should return true for gpt-5.2-codex', () => {
-    expect(isThinkingModeModel('gpt-5.2-codex')).toBe(true)
-  })
-
-  test('should return false for claude-opus-4.6', () => {
-    expect(isThinkingModeModel('claude-opus-4.6')).toBe(false)
-  })
-
-  test('should return true for gpt-5.1', () => {
-    expect(isThinkingModeModel('gpt-5.1')).toBe(true)
-  })
-
-  test('should return true for gpt-5.4', () => {
-    expect(isThinkingModeModel('gpt-5.4')).toBe(true)
-  })
-
-  test('should return true for gpt-5.5', () => {
-    expect(isThinkingModeModel('gpt-5.5')).toBe(true)
-  })
-
-  test('should return true for gpt-5.1-codex', () => {
-    expect(isThinkingModeModel('gpt-5.1-codex')).toBe(true)
-  })
-
-  test('should return true for o3-mini', () => {
-    expect(isThinkingModeModel('o3-mini')).toBe(true)
-  })
-
-  test('should return true for o4-mini', () => {
-    expect(isThinkingModeModel('o4-mini')).toBe(true)
-  })
-
-  test('should return false for gpt-4o', () => {
-    expect(isThinkingModeModel('gpt-4o')).toBe(false)
-  })
-
-  test('should return false for unknown-model', () => {
-    expect(isThinkingModeModel('unknown-model')).toBe(false)
   })
 })

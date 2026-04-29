@@ -3,13 +3,12 @@ import type { Model } from '~/services/copilot/get-models'
 
 import { describe, expect, test } from 'bun:test'
 
-import { findModelWithFallback, isClaudeCodeRequest } from '../src/routes/messages/count-tokens-handler'
-import { translateToOpenAI } from '../src/routes/messages/non-stream-translation'
-
-/**
- * Integration-style tests that verify the full translateToOpenAI call chain
- * with anthropicBeta options, simulating the handler → translation → model routing flow.
- */
+import { findModelWithFallback } from '../src/lib/model-utils'
+import {
+  applyModelVariant,
+  parseBetaFeatures,
+  sanitizeAnthropicBetaHeader,
+} from '../src/routes/messages/model-variants'
 
 function makePayload(model: string, extra?: Partial<AnthropicMessagesPayload>): AnthropicMessagesPayload {
   return {
@@ -21,127 +20,97 @@ function makePayload(model: string, extra?: Partial<AnthropicMessagesPayload>): 
   }
 }
 
-describe('Variant routing integration', () => {
-  test('fast mode via header + speed field routes to claude-opus-4.6-fast', () => {
-    const result = translateToOpenAI(
+describe('model variant routing', () => {
+  test('fast mode via header and speed field routes to claude-opus-4.6-fast', () => {
+    const result = applyModelVariant(
+      'claude-opus-4-6',
       makePayload('claude-opus-4-6', { speed: 'fast' }),
-      { anthropicBeta: 'fast-mode-2026-02-01' },
+      'fast-mode-2026-02-01',
     )
-    expect(result.model).toBe('claude-opus-4.6-fast')
+    expect(result).toBe('claude-opus-4.6-fast')
   })
 
   test('fast mode via speed field alone routes to claude-opus-4.6-fast', () => {
-    const result = translateToOpenAI(
-      makePayload('claude-opus-4-6', { speed: 'fast' }),
-    )
-    expect(result.model).toBe('claude-opus-4.6-fast')
+    const payload = makePayload('claude-opus-4-6', { speed: 'fast' })
+    expect(applyModelVariant(payload.model, payload, undefined)).toBe('claude-opus-4.6-fast')
   })
 
   test('fast mode via header alone routes to claude-opus-4.6-fast', () => {
-    const result = translateToOpenAI(
-      makePayload('claude-opus-4.6'),
-      { anthropicBeta: 'fast-mode-2026-02-01' },
-    )
-    expect(result.model).toBe('claude-opus-4.6-fast')
+    const payload = makePayload('claude-opus-4.6')
+    expect(applyModelVariant(payload.model, payload, 'fast-mode-2026-02-01')).toBe('claude-opus-4.6-fast')
   })
 
   test('1m context via header routes to claude-opus-4.6-1m', () => {
-    const result = translateToOpenAI(
-      makePayload('claude-opus-4.6'),
-      { anthropicBeta: 'context-1m-2025-08-07' },
-    )
-    expect(result.model).toBe('claude-opus-4.6-1m')
+    const payload = makePayload('claude-opus-4.6')
+    expect(applyModelVariant(payload.model, payload, 'context-1m-2025-08-07')).toBe('claude-opus-4.6-1m')
   })
 
-  test('1m context via header routes claude-opus-4.7 to claude-opus-4.7-1m-internal', () => {
-    const result = translateToOpenAI(
-      makePayload('claude-opus-4.7'),
-      { anthropicBeta: 'context-1m-2025-08-07' },
-    )
-    expect(result.model).toBe('claude-opus-4.7-1m-internal')
+  test('1m context routes claude-opus-4.7 to internal model', () => {
+    const payload = makePayload('claude-opus-4.7')
+    expect(applyModelVariant(payload.model, payload, 'context-1m-2025-08-07')).toBe('claude-opus-4.7-1m-internal')
   })
 
-  test('1m context via header routes normalized claude-opus-4-7 to claude-opus-4.7-1m-internal', () => {
-    const result = translateToOpenAI(
-      makePayload('claude-opus-4-7'),
-      { anthropicBeta: 'context-1m-2025-08-07' },
-    )
-    expect(result.model).toBe('claude-opus-4.7-1m-internal')
+  test('1m context normalizes claude-opus-4-7 before routing', () => {
+    const payload = makePayload('claude-opus-4-7')
+    expect(applyModelVariant(payload.model, payload, 'context-1m-2025-08-07')).toBe('claude-opus-4.7-1m-internal')
   })
 
-  test('no special signal routes to claude-opus-4.6', () => {
-    const result = translateToOpenAI(makePayload('claude-opus-4-6'))
-    expect(result.model).toBe('claude-opus-4.6')
+  test('no special signal only normalizes the model name', () => {
+    const payload = makePayload('claude-opus-4-6')
+    expect(applyModelVariant(payload.model, payload, undefined)).toBe('claude-opus-4.6')
   })
 
-  test('fast + 1m together: fast takes priority', () => {
-    const result = translateToOpenAI(
-      makePayload('claude-opus-4.6', { speed: 'fast' }),
-      { anthropicBeta: 'context-1m-2025-08-07, fast-mode-2026-02-01' },
-    )
-    expect(result.model).toBe('claude-opus-4.6-fast')
+  test('fast takes priority over 1m when both signals are present', () => {
+    const payload = makePayload('claude-opus-4.6', { speed: 'fast' })
+    expect(applyModelVariant(payload.model, payload, 'context-1m-2025-08-07, fast-mode-2026-02-01')).toBe('claude-opus-4.6-fast')
   })
 
   test('beta header with claude-code prefix and context-1m together', () => {
-    const result = translateToOpenAI(
-      makePayload('claude-opus-4.6'),
-      { anthropicBeta: 'claude-code-2025-01-01, context-1m-2025-08-07' },
-    )
-    expect(result.model).toBe('claude-opus-4.6-1m')
+    const payload = makePayload('claude-opus-4.6')
+    expect(applyModelVariant(payload.model, payload, 'claude-code-2025-01-01, context-1m-2025-08-07')).toBe('claude-opus-4.6-1m')
   })
 
-  test('model with date suffix is normalized then variant applied', () => {
-    const result = translateToOpenAI(
-      makePayload('claude-opus-4-6-20250514', { speed: 'fast' }),
-    )
-    expect(result.model).toBe('claude-opus-4.6-fast')
-  })
-
-  test('speed field does not leak into OpenAI payload', () => {
-    const result = translateToOpenAI(
-      makePayload('claude-opus-4.6', { speed: 'fast' }),
-    )
-    expect((result as unknown as Record<string, unknown>).speed).toBeUndefined()
+  test('model with date suffix is normalized before applying variant', () => {
+    const payload = makePayload('claude-opus-4-6-20250514', { speed: 'fast' })
+    expect(applyModelVariant(payload.model, payload, undefined)).toBe('claude-opus-4.6-fast')
   })
 
   test('non-opus models are not affected by variant signals', () => {
-    const result = translateToOpenAI(
-      makePayload('claude-sonnet-4.6', { speed: 'fast' }),
-      { anthropicBeta: 'fast-mode-2026-02-01' },
-    )
-    expect(result.model).toBe('claude-sonnet-4.6')
+    const payload = makePayload('claude-sonnet-4.6', { speed: 'fast' })
+    expect(applyModelVariant(payload.model, payload, 'fast-mode-2026-02-01')).toBe('claude-sonnet-4.6')
   })
 
-  test('fast variant inherits opus 4.6 feature support', () => {
-    const result = translateToOpenAI(
-      makePayload('claude-opus-4.6', {
-        speed: 'fast',
-        tool_choice: {
-          type: 'any',
-          disable_parallel_tool_use: true,
-        },
-        output_config: {
-          effort: 'max',
-        },
-      }),
-    )
+  test('unknown models are returned unchanged', () => {
+    const payload = makePayload('some-unknown-model')
+    expect(applyModelVariant(payload.model, payload, undefined)).toBe('some-unknown-model')
+  })
+})
 
-    expect(result.model).toBe('claude-opus-4.6-fast')
-    expect(result.tool_choice).toBe('required')
-    expect(result.parallel_tool_calls).toBe(false)
-    expect(result.reasoning_effort).toBe('max')
+describe('anthropic beta helpers', () => {
+  test('parseBetaFeatures handles comma-separated values', () => {
+    const features = parseBetaFeatures('claude-code-2025-01-01, context-1m-2025-08-07')
+    expect(features.has('claude-code-2025-01-01')).toBe(true)
+    expect(features.has('context-1m-2025-08-07')).toBe(true)
   })
 
-  test('claude-opus-4.7 uses medium adaptive reasoning and omits forced tool_choice when translated to chat-completions', () => {
-    const result = translateToOpenAI(makePayload('claude-opus-4.7', {
-      thinking: { type: 'adaptive' },
-      tool_choice: { type: 'any', disable_parallel_tool_use: true },
-    }))
+  test('parseBetaFeatures returns empty set for missing or empty headers', () => {
+    expect(parseBetaFeatures(undefined).size).toBe(0)
+    expect(parseBetaFeatures('').size).toBe(0)
+  })
 
-    expect(result.model).toBe('claude-opus-4.7')
-    expect(result.reasoning_effort).toBe('medium')
-    expect(result.tool_choice).toBeUndefined()
-    expect(result.parallel_tool_calls).toBe(false)
+  test('sanitizeAnthropicBetaHeader strips proxy-consumed features', () => {
+    expect(sanitizeAnthropicBetaHeader('context-1m-2025-08-07')).toBeUndefined()
+    expect(sanitizeAnthropicBetaHeader('fast-mode-2026-02-01')).toBeUndefined()
+    expect(sanitizeAnthropicBetaHeader('context-1m-2025-08-07,fast-mode-2026-02-01')).toBeUndefined()
+  })
+
+  test('sanitizeAnthropicBetaHeader preserves non-consumed features', () => {
+    expect(sanitizeAnthropicBetaHeader('claude-code-2025-01-01')).toBe('claude-code-2025-01-01')
+    expect(sanitizeAnthropicBetaHeader('claude-code-2025-01-01, context-1m-2025-08-07')).toBe('claude-code-2025-01-01')
+  })
+
+  test('sanitizeAnthropicBetaHeader returns undefined for undefined input', () => {
+    expect(sanitizeAnthropicBetaHeader(undefined)).toBeUndefined()
   })
 })
 
@@ -192,24 +161,5 @@ describe('findModelWithFallback', () => {
     const fastModel: Model = { ...baseModel, id: 'claude-opus-4.6-fast', name: 'Claude Opus 4.6 Fast' }
     const result = findModelWithFallback('claude-opus-4.6-fast', [baseModel, fastModel])
     expect(result?.id).toBe('claude-opus-4.6-fast')
-  })
-})
-
-describe('isClaudeCodeRequest', () => {
-  test('detects claude-code when it is the only token', () => {
-    expect(isClaudeCodeRequest('claude-code-2025-01-01')).toBe(true)
-  })
-
-  test('detects claude-code regardless of position in header', () => {
-    expect(isClaudeCodeRequest('fast-mode-2026-02-01, claude-code-2025-01-01')).toBe(true)
-    expect(isClaudeCodeRequest('claude-code-2025-01-01, fast-mode-2026-02-01')).toBe(true)
-  })
-
-  test('returns false when no claude-code token', () => {
-    expect(isClaudeCodeRequest('fast-mode-2026-02-01')).toBe(false)
-  })
-
-  test('returns false for undefined', () => {
-    expect(isClaudeCodeRequest(undefined)).toBe(false)
   })
 })

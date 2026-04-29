@@ -237,11 +237,3 @@ export function getModelConfig(modelId: string): ModelConfig {
 
   return DEFAULT_CONFIG
 }
-
-/**
- * Check if a model uses thinking/reasoning mode.
- * Compat wrapper — only affects reasoning logic, not routing.
- */
-export function isThinkingModeModel(modelId: string): boolean {
-  return getModelConfig(modelId).reasoningMode === 'thinking'
-}

@@ -23,7 +23,7 @@ import { createResponses } from '~/services/copilot/create-responses'
 import {
   applyModelVariant,
   sanitizeAnthropicBetaHeader,
-} from './non-stream-translation'
+} from './model-variants'
 import { createAnthropicSSEWriter } from './sse-writer'
 import { canRecoverUpstreamTerminationAsMessage, finalizeAnthropicStreamFromState, translateErrorToAnthropicErrorEvent } from './stream-translation'
 
