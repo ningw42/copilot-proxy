@@ -14,6 +14,7 @@ export const server = new Hono()
 
 server.use(logger())
 server.use(cors({
+  origin: '*',
   exposeHeaders: ['x-request-id', 'retry-after'],
 }))
 
