@@ -122,6 +122,8 @@ function buildUnsupportedMatcher(fieldTerms: Array<string>) {
       'must be one of',
       'additional properties',
       'not allowed',
+      'not permitted',
+      'does not match',
     ].some(term => haystack.includes(term))
   }
 }
@@ -245,9 +247,9 @@ export const copilotCapabilityProbes: Array<CapabilityProbe> = [
     title: 'Responses-only model is rejected on /chat/completions',
     tier: 'baseline',
     endpoint: 'chat-completions',
-    candidateFix: 'Keep GPT-5.5 and other Responses-only models routed to Copilot /responses.',
+    candidateFix: 'Keep the configured Responses-only model routed to Copilot /responses.',
     candidateMapping: 'Responses-only model -> Copilot /chat/completions',
-    rationale: 'GPT-5.5 is Responses-only in Copilot today; this catches accidental fallback to /chat/completions.',
+    rationale: 'This catches accidental fallback of the configured Responses-only model to /chat/completions.',
     expectation: 'must_be_unsupported',
     isUnsupported: buildUnsupportedMatcher([
       'unsupported_api_for_model',
@@ -325,7 +327,7 @@ export const copilotCapabilityProbes: Array<CapabilityProbe> = [
     endpoint: 'chat-completions',
     candidateFix: 'Forward Anthropic tool_choice to Claude-backed Copilot chat-completions only if upstream accepts it.',
     candidateMapping: 'Anthropic tool_choice:any/tool -> Copilot chat-completions tool_choice',
-    rationale: 'Claude support is currently marked false in model-config; this probe tells us whether that assumption still holds upstream.',
+    rationale: 'This probe tells us whether the selected Claude chat-completions path accepts tool choice constraints upstream.',
     expectation: 'support_or_clean_unsupported',
     isUnsupported: buildUnsupportedMatcher([
       'tool_choice',
@@ -452,7 +454,7 @@ export const copilotCapabilityProbes: Array<CapabilityProbe> = [
     endpoint: 'responses',
     candidateFix: 'Allow explicit no-reasoning Responses requests only if Copilot accepts reasoning.effort=none.',
     candidateMapping: 'OpenAI Responses reasoning.effort=none -> Copilot /responses',
-    rationale: 'GPT-5.5 accepts none as the latency-first reasoning setting; older models may reject it.',
+    rationale: 'The selected Responses model may accept or cleanly reject none as a latency-first reasoning setting.',
     expectation: 'support_or_clean_unsupported',
     isUnsupported: buildUnsupportedMatcher([
       'reasoning',
@@ -500,7 +502,7 @@ export const copilotCapabilityProbes: Array<CapabilityProbe> = [
     endpoint: 'responses',
     candidateFix: 'Map Anthropic output_config.effort or thinking hints to Copilot reasoning.effort only if high is accepted.',
     candidateMapping: 'Anthropic output_config.effort=high -> Responses reasoning.effort=high',
-    rationale: 'High effort is the most likely translation target for current Claude-thinking heuristics in the proxy.',
+    rationale: 'High effort is a likely translation target for Claude-thinking heuristics in the proxy.',
     expectation: 'support_or_clean_unsupported',
     isUnsupported: buildUnsupportedMatcher([
       'reasoning',
@@ -516,7 +518,7 @@ export const copilotCapabilityProbes: Array<CapabilityProbe> = [
     endpoint: 'responses',
     candidateFix: 'If Anthropic max-effort needs an adaptation on Responses-backed models, only target Copilot reasoning.effort=xhigh once upstream support is confirmed.',
     candidateMapping: 'Anthropic output_config.effort=max -> Responses reasoning.effort=xhigh',
-    rationale: 'Anthropic max-effort is Claude-specific. GPT-5.5 supports native Responses reasoning.effort=xhigh, so this probe guards the max-effort mapping target.',
+    rationale: 'Anthropic max-effort is Claude-specific; this probe validates the selected Responses model before using xhigh as a mapping target.',
     expectation: 'must_support',
     isUnsupported: buildUnsupportedMatcher([
       'reasoning',
@@ -532,7 +534,7 @@ export const copilotCapabilityProbes: Array<CapabilityProbe> = [
     endpoint: 'responses',
     candidateFix: 'Do not send reasoning.effort=minimal to Copilot /responses unless upstream starts accepting it.',
     candidateMapping: 'OpenAI Responses reasoning.effort=minimal -> Copilot /responses',
-    rationale: 'Some OpenAI clients can emit minimal, but current Copilot GPT-5.5 validation rejects it.',
+    rationale: 'Some OpenAI clients can emit minimal; this probe records whether the selected Responses model accepts or cleanly rejects it.',
     expectation: 'must_be_unsupported',
     isUnsupported: buildUnsupportedMatcher([
       'reasoning',
@@ -613,7 +615,7 @@ export const copilotCapabilityProbes: Array<CapabilityProbe> = [
     endpoint: 'responses',
     candidateFix: 'Forward or normalize deprecated generate_summary only after Copilot behavior is known.',
     candidateMapping: 'OpenAI Responses reasoning.generate_summary=auto -> Copilot /responses',
-    rationale: 'The current OpenAPI schema still lists generate_summary as deprecated, so older clients may emit it.',
+    rationale: 'The OpenAPI schema lists generate_summary as deprecated, so older clients may emit it.',
     expectation: 'support_or_clean_unsupported',
     isUnsupported: buildUnsupportedMatcher([
       'reasoning',
@@ -712,7 +714,7 @@ export const copilotCapabilityProbes: Array<CapabilityProbe> = [
     endpoint: 'responses',
     candidateFix: 'Preserve text.verbosity=low for Responses-backed models if Copilot accepts it.',
     candidateMapping: 'OpenAI Responses text.verbosity=low -> Copilot /responses',
-    rationale: 'GPT-5.5 exposes verbosity as a first-class output-length control.',
+    rationale: 'Some Responses models expose verbosity as a first-class output-length control.',
     expectation: 'support_or_clean_unsupported',
     isUnsupported: buildUnsupportedMatcher([
       'text',
@@ -731,7 +733,7 @@ export const copilotCapabilityProbes: Array<CapabilityProbe> = [
     endpoint: 'responses',
     candidateFix: 'Preserve text.verbosity=medium for Responses-backed models if Copilot accepts it.',
     candidateMapping: 'OpenAI Responses text.verbosity=medium -> Copilot /responses',
-    rationale: 'Medium is the documented neutral verbosity setting for GPT-5.5 style models.',
+    rationale: 'Medium is the documented neutral verbosity setting for Responses models that support verbosity.',
     expectation: 'support_or_clean_unsupported',
     isUnsupported: buildUnsupportedMatcher([
       'text',
@@ -825,7 +827,7 @@ export const copilotCapabilityProbes: Array<CapabilityProbe> = [
     endpoint: 'responses',
     candidateFix: 'Forward safety_identifier only if Copilot accepts the official abuse-detection identifier field.',
     candidateMapping: 'OpenAI Responses safety_identifier -> Copilot /responses',
-    rationale: 'The current OpenAPI schema replaces the deprecated user field with safety_identifier for abuse detection.',
+    rationale: 'The OpenAPI schema replaces the deprecated user field with safety_identifier for abuse detection.',
     expectation: 'support_or_clean_unsupported',
     isUnsupported: buildUnsupportedMatcher([
       'safety_identifier',
@@ -900,10 +902,10 @@ export const copilotCapabilityProbes: Array<CapabilityProbe> = [
     title: 'Responses accepts conversation state field',
     tier: 'optional',
     endpoint: 'responses',
-    candidateFix: 'Forward the official conversation field only with GPT-5.5 live coverage, because previous_response_id is still rejected separately.',
+    candidateFix: 'Forward the official conversation field only with live coverage for the selected Responses model.',
     candidateMapping: 'OpenAI Responses conversation -> Copilot /responses',
-    rationale: 'GPT-5.5 currently accepts the official conversation field even though previous_response_id remains unsupported.',
-    expectation: 'must_support',
+    rationale: 'Conversation state and previous_response_id can have different upstream support; probe them separately for the selected model.',
+    expectation: 'support_or_clean_unsupported',
     isUnsupported: buildNotFoundOrUnsupportedMatcher([
       'conversation',
       'conv_live_probe_missing',
@@ -960,7 +962,7 @@ export const copilotCapabilityProbes: Array<CapabilityProbe> = [
     endpoint: 'responses',
     candidateFix: 'Do not claim server-side stored response state unless Copilot accepts store=true.',
     candidateMapping: 'OpenAI Responses store=true -> Copilot /responses',
-    rationale: 'Stored response state is required by previous_response_id and retrieve/cancel flows; current Copilot does not expose it.',
+    rationale: 'Stored response state is required by previous_response_id and retrieve/cancel flows; this probe records whether the selected backend exposes it.',
     expectation: 'must_be_unsupported',
     isUnsupported: buildUnsupportedMatcher([
       'store',
@@ -1031,7 +1033,7 @@ export const copilotCapabilityProbes: Array<CapabilityProbe> = [
     endpoint: 'responses-raw',
     candidateFix: 'Avoid forwarding unsupported service_tier values to Copilot unless upstream changes.',
     candidateMapping: 'OpenAI Responses service_tier=auto -> Copilot /responses',
-    rationale: 'OpenAI-compatible clients may send service_tier, but current Copilot validation does not accept auto. This probe bypasses local sanitization so it tests the GitHub backend directly.',
+    rationale: 'OpenAI-compatible clients may send service_tier. This probe bypasses local sanitization so it tests the GitHub backend directly.',
     expectation: 'must_be_unsupported',
     isUnsupported: buildUnsupportedMatcher([
       'service_tier',
@@ -1351,7 +1353,7 @@ export const copilotCapabilityProbes: Array<CapabilityProbe> = [
     endpoint: 'responses',
     candidateFix: 'Forward local_shell tool declarations only if Copilot accepts the official local shell tool shape.',
     candidateMapping: 'OpenAI Responses local_shell tool -> Copilot /responses',
-    rationale: 'Local shell is part of the current Responses tool union used by coding agents.',
+    rationale: 'Local shell is part of the Responses tool union used by coding agents.',
     expectation: 'support_or_clean_unsupported',
     isUnsupported: buildUnsupportedMatcher([
       'local_shell',
@@ -1413,7 +1415,7 @@ export const copilotCapabilityProbes: Array<CapabilityProbe> = [
     endpoint: 'responses',
     candidateFix: 'Forward namespace tools only if Copilot accepts the official grouped-tool shape.',
     candidateMapping: 'OpenAI Responses namespace tool -> Copilot /responses',
-    rationale: 'Namespace tools are part of the current Responses tool union and affect large tool-catalog routing.',
+    rationale: 'Namespace tools are part of the Responses tool union and affect large tool-catalog routing.',
     expectation: 'support_or_clean_unsupported',
     isUnsupported: buildUnsupportedMatcher([
       'namespace',
@@ -1458,7 +1460,7 @@ export const copilotCapabilityProbes: Array<CapabilityProbe> = [
     endpoint: 'responses',
     candidateFix: 'Do not advertise code_interpreter passthrough until Copilot accepts the hosted tool.',
     candidateMapping: 'OpenAI hosted code_interpreter tool -> Copilot /responses',
-    rationale: 'Code interpreter is an official hosted tool, but current Copilot GPT-5.5 rejects it.',
+    rationale: 'Code interpreter is an official hosted tool; this probe records whether the selected Responses model accepts or cleanly rejects it.',
     expectation: 'must_be_unsupported',
     isUnsupported: buildUnsupportedMatcher([
       'code_interpreter',
@@ -1747,7 +1749,7 @@ export const copilotCapabilityProbes: Array<CapabilityProbe> = [
     endpoint: 'responses-raw',
     candidateFix: 'Forward /responses/{id}/cancel but do not claim cancellation until Copilot supports background jobs.',
     candidateMapping: 'OpenAI POST /responses/{id}/cancel -> Copilot /responses/{id}/cancel',
-    rationale: 'Cancel depends on background response state; current Copilot rejects the route.',
+    rationale: 'Cancel depends on background response state; this probe records whether the selected backend exposes the route.',
     expectation: 'must_be_unsupported',
     isUnsupported: buildNotFoundOrUnsupportedMatcher([
       'cancel',
@@ -1859,15 +1861,43 @@ export const copilotCapabilityProbes: Array<CapabilityProbe> = [
     title: 'Native Anthropic output_config.effort=high',
     tier: 'optional',
     endpoint: 'anthropic-messages',
-    expectation: 'must_support',
-    candidateFix: 'N/A',
-    candidateMapping: 'N/A',
-    rationale: 'Verifies native /v1/messages still accepts supported high-effort Claude reasoning.',
+    expectation: 'support_or_clean_unsupported',
+    candidateFix: 'Forward high effort on native passthrough when Copilot accepts it; otherwise surface the upstream invalid_reasoning_effort rejection unchanged.',
+    candidateMapping: 'Anthropic output_config.effort=high -> Copilot /v1/messages output_config.effort',
+    rationale: 'Copilot Anthropic effort support is model-dependent; high may be accepted or cleanly rejected depending on the selected upstream model.',
+    isUnsupported: buildUnsupportedMatcher([
+      'output_config.effort',
+      'reasoning_effort',
+      'high',
+    ]),
     buildPayload: config => ({
       model: config.claudeModel,
       max_tokens: 32,
       output_config: {
         effort: 'high',
+      },
+      messages: [{ role: 'user', content: 'Reply with the single word OK.' }],
+    }),
+  },
+  {
+    id: 'native-anthropic-reasoning-effort-xhigh',
+    title: 'Native Anthropic output_config.effort=xhigh',
+    tier: 'optional',
+    endpoint: 'anthropic-messages',
+    expectation: 'support_or_clean_unsupported',
+    candidateFix: 'Forward xhigh on native passthrough when Copilot accepts it; otherwise surface the upstream invalid_reasoning_effort rejection unchanged.',
+    candidateMapping: 'Anthropic output_config.effort=xhigh -> Copilot /v1/messages output_config.effort',
+    rationale: 'Copilot Anthropic effort support is model-dependent; xhigh may be accepted or cleanly rejected depending on the selected upstream model.',
+    isUnsupported: buildUnsupportedMatcher([
+      'output_config.effort',
+      'reasoning_effort',
+      'xhigh',
+    ]),
+    buildPayload: config => ({
+      model: config.claudeModel,
+      max_tokens: 32,
+      output_config: {
+        effort: 'xhigh',
       },
       messages: [{ role: 'user', content: 'Reply with the single word OK.' }],
     }),
@@ -1880,7 +1910,7 @@ export const copilotCapabilityProbes: Array<CapabilityProbe> = [
     expectation: 'must_be_unsupported',
     candidateFix: 'Keep native passthrough behavior and surface the upstream max-effort rejection unchanged.',
     candidateMapping: 'Anthropic output_config.effort=max -> Copilot /v1/messages invalid_reasoning_effort',
-    rationale: 'Current Copilot native Anthropic Claude models only accept low, medium, or high effort.',
+    rationale: 'Copilot Anthropic max-effort support is model-dependent; this probe records whether the selected upstream model rejects max cleanly.',
     isUnsupported: buildUnsupportedMatcher([
       'output_config.effort',
       'reasoning_effort',
@@ -1900,10 +1930,10 @@ export const copilotCapabilityProbes: Array<CapabilityProbe> = [
     title: 'Native Anthropic json_schema structured output',
     tier: 'optional',
     endpoint: 'anthropic-messages',
-    expectation: 'must_support',
-    candidateFix: 'Keep native passthrough for Anthropic json_schema structured output; do not reroute it through Claude chat-completions.',
+    expectation: 'support_or_clean_unsupported',
+    candidateFix: 'Use native passthrough for Anthropic json_schema structured output when Copilot accepts it; otherwise surface the upstream validation error unchanged.',
     candidateMapping: 'Anthropic output_config.format=json_schema -> Copilot /v1/messages output_config.format',
-    rationale: 'GPT-5.5 Responses probing is separate; current Claude native /v1/messages accepts official Anthropic json_schema structured output.',
+    rationale: 'Copilot native json_schema structured output support is model-dependent across Claude models.',
     isUnsupported: buildUnsupportedMatcher([
       'output_config.format',
       'format',
@@ -1932,10 +1962,14 @@ export const copilotCapabilityProbes: Array<CapabilityProbe> = [
     title: 'Native Anthropic thinking display=omitted',
     tier: 'optional',
     endpoint: 'anthropic-messages',
-    expectation: 'must_support',
-    candidateFix: 'N/A',
-    candidateMapping: 'N/A',
-    rationale: 'Official adaptive thinking supports display: omitted.',
+    expectation: 'support_or_clean_unsupported',
+    candidateFix: 'Forward adaptive thinking display options when Copilot accepts them; otherwise surface the upstream thinking validation error unchanged.',
+    candidateMapping: 'Anthropic thinking.display=omitted -> Copilot /v1/messages thinking.display',
+    rationale: 'Adaptive thinking display support is model-dependent; models without adaptive thinking reject this field cleanly.',
+    isUnsupported: buildUnsupportedMatcher([
+      'thinking',
+      'adaptive',
+    ]),
     buildPayload: config => ({
       model: config.claudeModel,
       max_tokens: 8192,
@@ -1969,10 +2003,10 @@ export const copilotCapabilityProbes: Array<CapabilityProbe> = [
     title: 'Native Anthropic document source=url (real PDF)',
     tier: 'optional',
     endpoint: 'anthropic-messages',
-    expectation: 'must_be_unsupported',
-    candidateFix: 'Proxy should bypass native /v1/messages, fetch the URL-backed document locally, expand it to text, and continue via a translated backend instead of blindly forwarding an unsupported URL document source.',
-    candidateMapping: 'Anthropic document source=url -> local fetch/extract -> text block(s) -> translated backend request',
-    rationale: 'Official document URL source with a real PDF, which current Copilot native /v1/messages rejects.',
+    expectation: 'support_or_clean_unsupported',
+    candidateFix: 'Use native passthrough when Copilot accepts URL-backed documents; otherwise fetch/extract locally or surface the clean upstream unsupported error.',
+    candidateMapping: 'Anthropic document source=url -> Copilot /v1/messages document source=url, or local fetch/extract fallback when unsupported',
+    rationale: 'Copilot native document URL support is model-dependent; this probe records whether the selected upstream model accepts or cleanly rejects URL-backed documents.',
     isUnsupported: buildUnsupportedMatcher([
       'url sources',
       'url',
@@ -2017,10 +2051,10 @@ export const copilotCapabilityProbes: Array<CapabilityProbe> = [
     title: 'Native Anthropic top-level cache_control',
     tier: 'optional',
     endpoint: 'anthropic-messages',
-    expectation: 'must_be_unsupported',
-    candidateFix: 'Do not forward top-level cache_control on native passthrough until Copilot /v1/messages accepts it.',
+    expectation: 'support_or_clean_unsupported',
+    candidateFix: 'Forward top-level cache_control only through native passthrough when Copilot accepts it; otherwise surface the upstream validation error cleanly.',
     candidateMapping: 'Anthropic top-level cache_control -> Copilot /v1/messages cache_control',
-    rationale: 'Current Copilot native /v1/messages rejects top-level cache_control with an extra-inputs validation error.',
+    rationale: 'Copilot top-level cache_control support is model-dependent; this probe records whether the selected upstream model accepts or cleanly rejects the field.',
     isUnsupported: buildUnsupportedMatcher([
       'cache_control',
       'extra inputs',

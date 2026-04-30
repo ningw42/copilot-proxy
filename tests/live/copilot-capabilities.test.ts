@@ -50,6 +50,7 @@ interface LiveEnvConfig extends LiveCopilotProbeConfig {
 
 const LIVE_TEST_ENABLED = process.env.COPILOT_LIVE_TEST === '1'
 const LIVE_RESPONSES_ONLY = process.env.COPILOT_LIVE_RESPONSES_ONLY === '1'
+const LIVE_ANTHROPIC_ONLY = process.env.COPILOT_LIVE_ANTHROPIC_ONLY === '1'
 const LIVE_TEST_TIMEOUT_MS = parseTimeout(process.env.COPILOT_LIVE_TIMEOUT_MS)
 const LIVE_TEST_RETRY_COUNT = parseRetryCount(process.env.COPILOT_LIVE_RETRY_COUNT)
 const runLiveTest = LIVE_TEST_ENABLED ? test : test.skip
@@ -92,8 +93,18 @@ function parseRetryCount(rawRetryCount: string | undefined): number {
 }
 
 function getEnabledLiveProbes(config: LiveEnvConfig): Array<CapabilityProbe> {
+  if (LIVE_RESPONSES_ONLY && LIVE_ANTHROPIC_ONLY) {
+    throw new Error('COPILOT_LIVE_RESPONSES_ONLY and COPILOT_LIVE_ANTHROPIC_ONLY are mutually exclusive')
+  }
+
   if (!LIVE_RESPONSES_ONLY) {
-    return copilotCapabilityProbes
+    if (!LIVE_ANTHROPIC_ONLY) {
+      return copilotCapabilityProbes
+    }
+
+    return copilotCapabilityProbes.filter(probe =>
+      probe.endpoint === 'anthropic-messages' || probe.endpoint === 'anthropic-files',
+    )
   }
 
   return copilotCapabilityProbes.filter((probe) => {
@@ -143,13 +154,23 @@ function getLiveEnvConfig(): LiveEnvConfig {
   if (!token) {
     throw new Error('COPILOT_TOKEN is required when COPILOT_LIVE_TEST=1')
   }
+  const claudeModel = process.env.COPILOT_LIVE_CLAUDE_MODEL
+  const responsesModel = process.env.COPILOT_LIVE_RESPONSES_MODEL
+
+  if (!LIVE_RESPONSES_ONLY && !claudeModel) {
+    throw new Error('COPILOT_LIVE_CLAUDE_MODEL is required when Claude live probes are enabled')
+  }
+
+  if (!LIVE_ANTHROPIC_ONLY && !responsesModel) {
+    throw new Error('COPILOT_LIVE_RESPONSES_MODEL is required when Responses live probes are enabled')
+  }
 
   return {
     token,
     accountType: process.env.COPILOT_ACCOUNT_TYPE ?? 'individual',
     vsCodeVersion: process.env.COPILOT_VSCODE_VERSION ?? '1.104.3',
-    claudeModel: process.env.COPILOT_LIVE_CLAUDE_MODEL ?? 'claude-opus-4.6',
-    responsesModel: process.env.COPILOT_LIVE_RESPONSES_MODEL ?? 'gpt-5.5',
+    claudeModel: claudeModel ?? '',
+    responsesModel: responsesModel ?? '',
     imageUrl:
       process.env.COPILOT_LIVE_IMAGE_URL
       ?? 'https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png',

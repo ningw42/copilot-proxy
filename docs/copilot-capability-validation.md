@@ -4,6 +4,8 @@ This repository already translates Anthropic-compatible requests onto GitHub Cop
 
 This document is the guardrail for that second category.
 
+This document intentionally does not record a durable support matrix for GitHub Copilot upstream behavior. Treat the executable live probes, run against the selected model and account at the time of the change, as the source of truth.
+
 ## Why this exists
 
 Several Claude-side compatibility gaps are easy to identify from the Anthropic protocol alone:
@@ -49,17 +51,17 @@ The Responses rows are aligned to the OpenAI OpenAPI `CreateResponse` schema and
 
 Hosted tool presence probes set `tool_choice=none`, so they measure whether Copilot accepts the tool schema on the request, not whether the backend can or will execute that hosted tool.
 
-| Probe group | Probe IDs | Copilot endpoint | Default model | Expected interpretation |
+| Probe group | Probe IDs | Copilot endpoint | Model source | How to read the result |
 | --- | --- | --- | --- | --- |
-| Baselines | `baseline-claude-chat-completions`, `baseline-claude-responses-unsupported`, `baseline-responses-api`, `baseline-responses-model-chat-completions-unsupported`, `responses-streaming` | `/chat/completions`, `/responses` | `claude-opus-4.6`, `gpt-5.5` | Baseline positive probes must succeed; negative baseline probes must return clean `unsupported` |
-| Claude compatibility gates | `claude-tool-choice-required`, `claude-parallel-tool-calls-false`, `claude-reasoning-effort-high`, `claude-reasoning-effort-max`, `claude-response-format-json-object`, `claude-response-format-json-schema` | `/chat/completions` | `claude-opus-4.6` | `supported` or clean `unsupported` |
-| Responses streaming controls | `responses-stream-options-include-obfuscation-false` | `/responses` | `gpt-5.5` | `supported` or clean `unsupported` |
-| Responses reasoning and output controls | `responses-reasoning-effort-none`, `responses-reasoning-effort-low`, `responses-reasoning-effort-medium`, `responses-reasoning-effort-high`, `responses-reasoning-effort-xhigh`, `responses-reasoning-effort-minimal-unsupported`, `responses-reasoning-summary-auto`, `responses-reasoning-summary-concise`, `responses-reasoning-summary-detailed`, `responses-reasoning-generate-summary-auto-deprecated`, `responses-include-encrypted-reasoning`, `responses-include-output-logprobs`, `responses-include-input-image-url`, `responses-text-verbosity-low`, `responses-text-verbosity-medium`, `responses-text-verbosity-high` | `/responses` | `gpt-5.5` | Supported values including `xhigh` must pass; known invalid values must return clean `unsupported` |
-| Responses cache and context controls | `responses-prompt-cache-key`, `responses-prompt-cache-retention-in-memory`, `responses-metadata`, `responses-safety-identifier`, `responses-user-deprecated`, `responses-truncation-auto`, `responses-context-management`, `responses-conversation`, `responses-prompt-template`, `responses-store-false`, `responses-store-true-unsupported`, `responses-previous-response-id-unsupported`, `responses-background-unsupported`, `responses-background-stream-unsupported`, `responses-service-tier-auto-unsupported` | `/responses` | `gpt-5.5` | Supported stateless controls may pass; stateful/background controls currently must return clean `unsupported` unless explicitly probed as supported |
-| Responses tools and structured output | `responses-max-tool-calls-1`, `responses-function-call-output-input`, `responses-parallel-tool-calls-false`, `responses-tool-choice-function-object`, `responses-tool-choice-allowed-tools`, `responses-web-search-tool`, `responses-web-search-preview-tool`, `responses-file-search-tool`, `responses-image-generation-tool`, `responses-mcp-tool`, `responses-computer-use-preview-tool`, `responses-tool-search-tool`, `responses-local-shell-tool`, `responses-shell-tool`, `responses-custom-tool`, `responses-namespace-tool`, `responses-apply-patch-tool`, `responses-code-interpreter-tool-unsupported`, `responses-text-format-json-object`, `responses-text-format-json-schema` | `/responses` | `gpt-5.5` | Function/tool controls and accepted hosted tools may pass; unsupported hosted tools must return clean `unsupported` |
-| Responses multimodal and files | `responses-input-image-url`, `responses-input-image-data-url`, `responses-input-file-url` | `/responses` | `gpt-5.5` | `supported` or clean `unsupported` |
-| Official Responses subroutes | `responses-get-by-id-unsupported`, `responses-delete-by-id-unsupported`, `responses-cancel-unsupported`, `responses-input-items-unsupported`, `responses-input-tokens-unsupported`, `responses-compact-unsupported` | `/responses/{id}`, `/responses/{id}/cancel`, `/responses/{id}/input_items`, `/responses/input_tokens`, `/responses/compact` | `gpt-5.5` | Current Copilot behavior must be clean `unsupported` |
-| Native Anthropic passthrough | `native-anthropic-baseline`, `native-anthropic-reasoning-effort-high`, `native-anthropic-reasoning-effort-max`, `native-anthropic-json-schema`, `native-anthropic-thinking-display-omitted`, `native-anthropic-document-text`, `native-anthropic-document-url-pdf`, `native-anthropic-document-citations`, `native-anthropic-cache-control`, `native-anthropic-image-base64`, `native-anthropic-image-url-rejected`, `native-anthropic-files-api-unsupported` | `/v1/messages`, `/v1/files` | `claude-opus-4.6` | Known supported native Anthropic features, including `json_schema`, must succeed; known upstream gaps such as URL documents, top-level `cache_control`, and Files API must return clean `unsupported` |
+| Baselines | `baseline-claude-chat-completions`, `baseline-claude-responses-unsupported`, `baseline-responses-api`, `baseline-responses-model-chat-completions-unsupported`, `responses-streaming` | `/chat/completions`, `/responses` | env configured | Establishes whether the selected model and endpoint are reachable before interpreting feature probes |
+| Claude compatibility gates | `claude-tool-choice-required`, `claude-parallel-tool-calls-false`, `claude-reasoning-effort-high`, `claude-reasoning-effort-max`, `claude-response-format-json-object`, `claude-response-format-json-schema` | `/chat/completions` | env configured | Read the live summary for the selected model; do not infer support from this document |
+| Responses streaming controls | `responses-stream-options-include-obfuscation-false` | `/responses` | env configured | Read the live summary for the selected model |
+| Responses reasoning and output controls | `responses-reasoning-effort-none`, `responses-reasoning-effort-low`, `responses-reasoning-effort-medium`, `responses-reasoning-effort-high`, `responses-reasoning-effort-xhigh`, `responses-reasoning-effort-minimal-unsupported`, `responses-reasoning-summary-auto`, `responses-reasoning-summary-concise`, `responses-reasoning-summary-detailed`, `responses-reasoning-generate-summary-auto-deprecated`, `responses-include-encrypted-reasoning`, `responses-include-output-logprobs`, `responses-include-input-image-url`, `responses-text-verbosity-low`, `responses-text-verbosity-medium`, `responses-text-verbosity-high` | `/responses` | env configured | Read the live summary for the selected model and date |
+| Responses cache and context controls | `responses-prompt-cache-key`, `responses-prompt-cache-retention-in-memory`, `responses-metadata`, `responses-safety-identifier`, `responses-user-deprecated`, `responses-truncation-auto`, `responses-context-management`, `responses-conversation`, `responses-prompt-template`, `responses-store-false`, `responses-store-true-unsupported`, `responses-previous-response-id-unsupported`, `responses-background-unsupported`, `responses-background-stream-unsupported`, `responses-service-tier-auto-unsupported` | `/responses` | env configured | Read the live summary for the selected model and date |
+| Responses tools and structured output | `responses-max-tool-calls-1`, `responses-function-call-output-input`, `responses-parallel-tool-calls-false`, `responses-tool-choice-function-object`, `responses-tool-choice-allowed-tools`, `responses-web-search-tool`, `responses-web-search-preview-tool`, `responses-file-search-tool`, `responses-image-generation-tool`, `responses-mcp-tool`, `responses-computer-use-preview-tool`, `responses-tool-search-tool`, `responses-local-shell-tool`, `responses-shell-tool`, `responses-custom-tool`, `responses-namespace-tool`, `responses-apply-patch-tool`, `responses-code-interpreter-tool-unsupported`, `responses-text-format-json-object`, `responses-text-format-json-schema` | `/responses` | env configured | Read the live summary for the selected model and date |
+| Responses multimodal and files | `responses-input-image-url`, `responses-input-image-data-url`, `responses-input-file-url` | `/responses` | env configured | Read the live summary for the selected model and date |
+| Official Responses subroutes | `responses-get-by-id-unsupported`, `responses-delete-by-id-unsupported`, `responses-cancel-unsupported`, `responses-input-items-unsupported`, `responses-input-tokens-unsupported`, `responses-compact-unsupported` | `/responses/{id}`, `/responses/{id}/cancel`, `/responses/{id}/input_items`, `/responses/input_tokens`, `/responses/compact` | env configured | Read the live summary for the selected model and date |
+| Native Anthropic passthrough | `native-anthropic-baseline`, `native-anthropic-reasoning-effort-high`, `native-anthropic-reasoning-effort-xhigh`, `native-anthropic-reasoning-effort-max`, `native-anthropic-json-schema`, `native-anthropic-thinking-display-omitted`, `native-anthropic-document-text`, `native-anthropic-document-url-pdf`, `native-anthropic-document-citations`, `native-anthropic-cache-control`, `native-anthropic-image-base64`, `native-anthropic-image-url-rejected`, `native-anthropic-files-api-unsupported` | `/v1/messages`, `/v1/files` | env configured | Read the live summary for the selected model and date |
 
 ## How to run the live probes
 
@@ -69,14 +71,15 @@ Required environment variables:
 
 - `COPILOT_LIVE_TEST=1`
 - `COPILOT_TOKEN=<your GitHub Copilot bearer token>`
+- `COPILOT_LIVE_CLAUDE_MODEL=<claude-model-under-test>` when Claude or Anthropic probes are enabled
+- `COPILOT_LIVE_RESPONSES_MODEL=<responses-model-under-test>` when Responses probes are enabled
 
 Optional environment variables:
 
 - `COPILOT_ACCOUNT_TYPE=individual|business|enterprise`
 - `COPILOT_VSCODE_VERSION=1.104.3`
-- `COPILOT_LIVE_CLAUDE_MODEL=claude-opus-4.6`
-- `COPILOT_LIVE_RESPONSES_MODEL=gpt-5.5`
-- `COPILOT_LIVE_RESPONSES_ONLY=1` to run only GPT-5.5 `/responses` and raw `/responses/*` probes
+- `COPILOT_LIVE_RESPONSES_ONLY=1` to run only the configured `/responses` and raw `/responses/*` probes
+- `COPILOT_LIVE_ANTHROPIC_ONLY=1` to run only native Anthropic `/v1/messages` and `/v1/files` probes
 - `COPILOT_LIVE_IMAGE_URL=https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png`
 - `COPILOT_LIVE_FILE_URL=https://www.berkshirehathaway.com/letters/2024ltr.pdf`
 - `COPILOT_LIVE_TIMEOUT_MS=180000`
@@ -87,8 +90,8 @@ Example:
 ```sh
 COPILOT_LIVE_TEST=1 \
 COPILOT_TOKEN=ghu_xxx \
-COPILOT_LIVE_CLAUDE_MODEL=claude-opus-4.6 \
-COPILOT_LIVE_RESPONSES_MODEL=gpt-5.5 \
+COPILOT_LIVE_CLAUDE_MODEL=<claude-model-under-test> \
+COPILOT_LIVE_RESPONSES_MODEL=<responses-model-under-test> \
 bun run test:live:copilot
 ```
 
@@ -97,8 +100,28 @@ Responses-only baseline:
 ```sh
 COPILOT_LIVE_TEST=1 \
 COPILOT_TOKEN=ghu_xxx \
-COPILOT_LIVE_RESPONSES_MODEL=gpt-5.5 \
+COPILOT_LIVE_RESPONSES_MODEL=<responses-model-under-test> \
 COPILOT_LIVE_RESPONSES_ONLY=1 \
+bun run test:live:copilot
+```
+
+Anthropic-only baseline:
+
+```sh
+COPILOT_LIVE_TEST=1 \
+COPILOT_TOKEN=ghu_xxx \
+COPILOT_LIVE_CLAUDE_MODEL=<claude-model-under-test> \
+COPILOT_LIVE_ANTHROPIC_ONLY=1 \
+bun run test:live:copilot
+```
+
+Anthropic-only probe for a selected upstream Claude model:
+
+```sh
+COPILOT_LIVE_TEST=1 \
+COPILOT_TOKEN=ghu_xxx \
+COPILOT_LIVE_CLAUDE_MODEL=<another-claude-model-under-test> \
+COPILOT_LIVE_ANTHROPIC_ONLY=1 \
 bun run test:live:copilot
 ```
 
@@ -125,8 +148,9 @@ Interpretation rules:
 
 Use the probe outcome to decide how aggressive the proxy should be:
 
-- If a probe is `supported`, we can confidently wire the corresponding translation path and add normal unit coverage.
-- If a probe is `unsupported`, keep the local parsing improvement but omit or downgrade the upstream field.
+- Treat each live run as a point-in-time result for the selected model, account type, and Copilot backend.
+- If a probe is `supported`, we can wire the corresponding translation path for that validated surface and add normal unit coverage.
+- If a probe is `unsupported`, keep the local parsing improvement but omit, downgrade, or explicitly surface the upstream-aligned unsupported error for that surface.
 - If a probe fails for environmental reasons, rerun the suite before making routing or translation decisions.
 
 ## Codex CLI smoke tests
@@ -145,6 +169,7 @@ Then run Codex with temporary local state and an explicit Responses provider:
 mkdir -p "${XDG_CACHE_HOME:-$HOME/.cache}"
 CODEX_SMOKE_HOME="$(mktemp -d "${XDG_CACHE_HOME:-$HOME/.cache}/codex-proxy-smoke.XXXXXX")"
 CODEX_SMOKE_WORK="$(mktemp -d /tmp/codex-proxy-smoke-work.XXXXXX)"
+RESPONSES_MODEL_UNDER_TEST=<responses-model-under-test>
 
 env CODEX_HOME="$CODEX_SMOKE_HOME" \
 OPENAI_API_KEY=dummy \
@@ -154,7 +179,7 @@ codex --ask-for-approval never exec \
   --skip-git-repo-check \
   --sandbox read-only \
   --cd "$CODEX_SMOKE_WORK" \
-  --model gpt-5.5 \
+  --model "$RESPONSES_MODEL_UNDER_TEST" \
   -c 'model_provider="copilot-proxy"' \
   -c 'model_providers.copilot-proxy={name="Copilot Proxy", base_url="http://127.0.0.1:4899/v1", env_key="OPENAI_API_KEY", wire_api="responses"}' \
   "Reply with exactly: proxy-ok"
@@ -181,14 +206,15 @@ bun run ./src/main.ts start -p 4899
 Then run Claude Code with temporary local state:
 
 ```sh
+CLAUDE_MODEL_UNDER_TEST=<claude-model-under-test>
 env HOME=/tmp/claude-code-proxy-smoke \
 ANTHROPIC_BASE_URL=http://127.0.0.1:4899 \
 ANTHROPIC_AUTH_TOKEN=dummy \
-ANTHROPIC_MODEL=claude-opus-4-6 \
+ANTHROPIC_MODEL="$CLAUDE_MODEL_UNDER_TEST" \
 CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 \
 DISABLE_NON_ESSENTIAL_MODEL_CALLS=1 \
 claude --bare -p \
-  --model claude-opus-4-6 \
+  --model "$CLAUDE_MODEL_UNDER_TEST" \
   --output-format json \
   --no-session-persistence \
   "Reply with exactly: proxy-ok"
@@ -204,14 +230,15 @@ Expected behavior:
 Additional high-value smokes:
 
 ```sh
+CLAUDE_MODEL_UNDER_TEST=<claude-model-under-test>
 env HOME=/tmp/claude-code-proxy-smoke \
 ANTHROPIC_BASE_URL=http://127.0.0.1:4899 \
 ANTHROPIC_AUTH_TOKEN=dummy \
-ANTHROPIC_MODEL=claude-opus-4-6 \
+ANTHROPIC_MODEL="$CLAUDE_MODEL_UNDER_TEST" \
 CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 \
 DISABLE_NON_ESSENTIAL_MODEL_CALLS=1 \
 claude --bare -p \
-  --model claude-opus-4-6 \
+  --model "$CLAUDE_MODEL_UNDER_TEST" \
   --output-format json \
   --no-session-persistence \
   --permission-mode bypassPermissions \
@@ -223,14 +250,15 @@ claude --bare -p \
 This verifies a real tool_use/tool_result loop through `/v1/messages`.
 
 ```sh
+CLAUDE_MODEL_UNDER_TEST=<claude-model-under-test>
 env HOME=/tmp/claude-code-proxy-smoke \
 ANTHROPIC_BASE_URL=http://127.0.0.1:4899 \
 ANTHROPIC_AUTH_TOKEN=dummy \
-ANTHROPIC_MODEL=claude-opus-4-6 \
+ANTHROPIC_MODEL="$CLAUDE_MODEL_UNDER_TEST" \
 CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 \
 DISABLE_NON_ESSENTIAL_MODEL_CALLS=1 \
 claude --bare -p \
-  --model claude-opus-4-6 \
+  --model "$CLAUDE_MODEL_UNDER_TEST" \
   --output-format json \
   --no-session-persistence \
   --json-schema '{"type":"object","properties":{"status":{"type":"string"}},"required":["status"],"additionalProperties":false}' \
@@ -240,56 +268,48 @@ claude --bare -p \
 Claude Code implements `--json-schema` by adding a `StructuredOutput` tool. It does not send Anthropic `output_config.format=json_schema`, so this smoke should succeed when normal tool calls work.
 
 ```sh
+CLAUDE_MODEL_UNDER_TEST=<claude-model-under-test>
 env HOME=/tmp/claude-code-proxy-smoke \
 ANTHROPIC_BASE_URL=http://127.0.0.1:4899 \
 ANTHROPIC_AUTH_TOKEN=dummy \
-ANTHROPIC_MODEL=claude-opus-4-6 \
+ANTHROPIC_MODEL="$CLAUDE_MODEL_UNDER_TEST" \
 CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 \
 DISABLE_NON_ESSENTIAL_MODEL_CALLS=1 \
 claude --bare -p \
-  --model claude-opus-4-6 \
+  --model "$CLAUDE_MODEL_UNDER_TEST" \
   --effort max \
   --output-format json \
   --no-session-persistence \
   "Reply with exactly: effort-ok"
 ```
 
-This is a negative smoke. Current Copilot native `/v1/messages` rejects `output_config.effort="max"` for `claude-opus-4.6`, so Claude Code should return an API error with `invalid_reasoning_effort`.
+This smoke is only meaningful after a fresh live probe shows how the selected model handles `output_config.effort="max"`. If the live probe reports a clean unsupported result, Claude Code should surface that API error rather than route around it.
 
 ```sh
+CLAUDE_MODEL_UNDER_TEST=<claude-model-under-test>
 curl -sS http://127.0.0.1:4899/v1/messages/count_tokens \
   -H 'content-type: application/json' \
   -H 'anthropic-version: 2023-06-01' \
-  -d '{"model":"claude-opus-4-6","max_tokens":32,"messages":[{"role":"user","content":"Count this short prompt."}]}'
+  -d "{\"model\":\"$CLAUDE_MODEL_UNDER_TEST\",\"max_tokens\":32,\"messages\":[{\"role\":\"user\",\"content\":\"Count this short prompt.\"}]}"
 ```
 
 This checks the Claude-compatible token counting route.
 
 ## Important nuance for Anthropic `output_config.format=json_schema`
 
-Parameter acceptance is not the same as equivalent structured-output support.
+Do not encode an expected accept/reject result for Anthropic `output_config.format.type="json_schema"` in this document. Run the native Anthropic live probe for the selected model and use that result.
 
-Current Copilot behavior is:
-
-- Native `/v1/messages` rejects Anthropic `output_config.format` with `output_config.format: Extra inputs are not permitted`.
-- Claude `/chat/completions` accepts `response_format=json_schema`, but that does not prove it enforces an Anthropic-equivalent JSON schema contract.
-
-For that reason, Anthropic `output_config.format.type="json_schema"` must stay on native `/v1/messages` and surface the upstream rejection until Copilot implements native support. The proxy should not silently route this request to Claude `/chat/completions`, because that can turn an unsupported request into a schema-invalid 200 response.
+Keep Anthropic `output_config.format.type="json_schema"` on native `/v1/messages` when it is forwarded. Do not route a native rejection through Claude `/chat/completions` as `response_format=json_schema`, because that can produce a schema-invalid 200 response with different semantics.
 
 ## Important nuance for Anthropic `output_config.effort=max`
 
 Anthropic `max` is Claude-side reasoning semantics, not a value we should blindly forward to Copilot `/responses` or assume Copilot native Claude accepts.
 
-Current Copilot behavior is:
-
-- Native `/v1/messages` accepts `output_config.effort` values `low`, `medium`, and `high`.
-- Native `/v1/messages` rejects `output_config.effort="max"` for `claude-opus-4.6` with `invalid_reasoning_effort`.
-- Claude `/chat/completions` also rejects `reasoning_effort="max"` for `claude-opus-4.6` with `invalid_reasoning_effort`.
-- Claude Code `--effort max` therefore should surface a clean unsupported error until Copilot native support changes.
+Do not encode an expected accept/reject result for `output_config.effort` values in this document. Run the live probe for the selected model. If the selected upstream model rejects an effort value cleanly, surface that unsupported error instead of silently changing the request semantics.
 
 The live validation layer therefore treats `/responses` differently:
 
-- First, verify that Claude itself is still rejected on `/responses`.
-- Then, if Anthropic-compatible requests are routed onto a Responses-backed model, probe the native Copilot/OpenAI-side high-end value `reasoning.effort = "xhigh"`.
+- First, probe the selected Claude model on its native endpoint.
+- Then, if Anthropic-compatible requests are routed onto a Responses-backed model, separately probe the native Copilot/OpenAI-side high-end effort value.
 
-That keeps Claude-specific `max` logic on the `/chat/completions` path where it belongs, while still giving us a validated adaptation target for non-Claude Responses-backed models.
+That keeps Claude-specific effort semantics separate from Responses-backed model semantics, with the live probe result as the source of truth.
