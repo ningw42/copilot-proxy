@@ -4,17 +4,16 @@ import { state } from '~/lib/state'
 import { server } from '~/server'
 
 const originalFetch = globalThis.fetch
-
-function createAbortError(): Error {
-  const error = new Error('The operation was aborted.')
-  error.name = 'AbortError'
-  return error
-}
+const upstreamRequests: Array<{
+  signal: AbortSignal | undefined
+  url: string
+}> = []
 
 const fetchMock = mock(async (url: string, init?: RequestInit): Promise<Response> => {
-  if (init?.signal) {
-    throw createAbortError()
-  }
+  upstreamRequests.push({
+    signal: init?.signal ?? undefined,
+    url,
+  })
 
   if (url.endsWith('/chat/completions')) {
     return new Response(JSON.stringify({
@@ -99,8 +98,10 @@ const fetchMock = mock(async (url: string, init?: RequestInit): Promise<Response
 })
 
 beforeEach(() => {
+  upstreamRequests.length = 0
   fetchMock.mockClear()
   state.lastRequestTimestamp = undefined
+  state.models = undefined
   state.copilotToken = 'test-token'
   state.vsCodeVersion = '1.0.0'
   state.accountType = 'individual'
@@ -112,8 +113,15 @@ afterEach(() => {
   globalThis.fetch = originalFetch
 })
 
+function expectSingleUpstreamSignalFor(pathSuffix: string): void {
+  expect(upstreamRequests).toHaveLength(1)
+  expect(upstreamRequests[0]?.url.endsWith(pathSuffix)).toBe(true)
+  expect(upstreamRequests[0]?.signal).toBeDefined()
+  expect(upstreamRequests[0]?.signal?.aborted).toBe(false)
+}
+
 describe('route request-signal regression', () => {
-  test('chat completions do not forward the inbound request signal upstream', async () => {
+  test('chat completions forward the inbound request signal upstream', async () => {
     const response = await server.request('/v1/chat/completions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -132,9 +140,10 @@ describe('route request-signal regression', () => {
       }>
     }
     expect(json.choices[0]?.message.content).toBe('ok')
+    expectSingleUpstreamSignalFor('/chat/completions')
   })
 
-  test('responses do not forward the inbound request signal upstream', async () => {
+  test('direct responses forward the inbound request signal upstream', async () => {
     const response = await server.request('/v1/responses', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -153,9 +162,24 @@ describe('route request-signal regression', () => {
       }>
     }
     expect(json.output[0]?.content[0]?.text).toBe('ok')
+    expectSingleUpstreamSignalFor('/responses')
   })
 
-  test('messages do not forward the inbound request signal upstream', async () => {
+  test('responses translated through messages forward the inbound request signal upstream', async () => {
+    const response = await server.request('/v1/responses', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-opus-4.6',
+        input: 'hi',
+      }),
+    })
+
+    expect(response.status).toBe(200)
+    expectSingleUpstreamSignalFor('/v1/messages')
+  })
+
+  test('native messages forward the inbound request signal upstream', async () => {
     const response = await server.request('/v1/messages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -173,9 +197,25 @@ describe('route request-signal regression', () => {
       }>
     }
     expect(json.content[0]?.text).toBe('ok')
+    expectSingleUpstreamSignalFor('/v1/messages')
   })
 
-  test('embeddings do not forward the inbound request signal upstream', async () => {
+  test('messages translated through responses forward the inbound request signal upstream', async () => {
+    const response = await server.request('/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'gpt-5.4',
+        max_tokens: 256,
+        messages: [{ role: 'user', content: 'hi' }],
+      }),
+    })
+
+    expect(response.status).toBe(200)
+    expectSingleUpstreamSignalFor('/responses')
+  })
+
+  test('embeddings forward the inbound request signal upstream', async () => {
     const response = await server.request('/v1/embeddings', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -192,5 +232,6 @@ describe('route request-signal regression', () => {
       }>
     }
     expect(json.data[0]?.embedding).toEqual([0.1, 0.2])
+    expectSingleUpstreamSignalFor('/embeddings')
   })
 })

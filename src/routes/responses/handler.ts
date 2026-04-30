@@ -113,7 +113,7 @@ export async function handleResponsesPassthrough(
 
 /** Direct path: model supports responses API */
 async function handleViaResponses(c: Context, payload: ResponsesPayload) {
-  const result = await createResponses(payload)
+  const result = await createResponses(payload, { signal: c.req.raw.signal })
 
   if (isResponsesNonStreaming(result.body)) {
     if (consola.level >= 4) {
@@ -178,7 +178,7 @@ async function handleViaAnthropic(c: Context, payload: ResponsesPayload) {
     consola.debug('Translated Responses→Anthropic payload:', JSON.stringify(anthropicPayload).slice(-400))
   }
 
-  const result = await createAnthropicMessages(anthropicPayload)
+  const result = await createAnthropicMessages(anthropicPayload, { signal: c.req.raw.signal })
 
   // Non-streaming
   if (!result.streaming) {

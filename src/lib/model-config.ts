@@ -218,7 +218,7 @@ export function getModelConfig(modelId: string): ModelConfig {
     (a, b) => b[0].length - a[0].length,
   )
   for (const [key, config] of entries) {
-    if (modelId.startsWith(key)) {
+    if (hasModelConfigPrefix(modelId, key)) {
       return config
     }
   }
@@ -236,4 +236,8 @@ export function getModelConfig(modelId: string): ModelConfig {
   }
 
   return DEFAULT_CONFIG
+}
+
+function hasModelConfigPrefix(modelId: string, configModelId: string): boolean {
+  return modelId.startsWith(`${configModelId}-`)
 }

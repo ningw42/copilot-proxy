@@ -126,7 +126,7 @@ async function handleViaResponses(
     consola.debug('Translated Anthropic→Responses payload:', JSON.stringify(responsesPayload).slice(-400))
   }
 
-  const result = await createResponses(responsesPayload)
+  const result = await createResponses(responsesPayload, { signal: c.req.raw.signal })
 
   if (isResponsesNonStreaming(result.body)) {
     if (consola.level >= 4) {
@@ -238,6 +238,7 @@ async function handleViaNativeAnthropic(
   }
 
   const result = await createAnthropicMessagesWithThinkingSignatureRetry(payload, {
+    signal: c.req.raw.signal,
     anthropicBeta: sanitizeAnthropicBetaHeader(anthropicBeta),
   })
 

@@ -63,6 +63,12 @@ describe('getModelConfig', () => {
     expect(config.supportedApis).toEqual(['responses'])
   })
 
+  test('should let o3-mini variants inherit the responses config', () => {
+    const config = getModelConfig('o3-mini-high')
+    expect(config.reasoningMode).toBe('thinking')
+    expect(config.supportedApis).toEqual(['responses'])
+  })
+
   test('should match gpt-5.2-codex-max via prefix match', () => {
     const config = getModelConfig('gpt-5.2-codex-max')
     expect(config.reasoningMode).toBe('thinking')
@@ -77,6 +83,11 @@ describe('getModelConfig', () => {
 
   test('should return default config for unknown-model', () => {
     const config = getModelConfig('unknown-model')
+    expect(config.supportedApis).toEqual(['chat-completions'])
+  })
+
+  test('should not match adjacent model versions by raw prefix', () => {
+    const config = getModelConfig('gpt-5.20')
     expect(config.supportedApis).toEqual(['chat-completions'])
   })
 

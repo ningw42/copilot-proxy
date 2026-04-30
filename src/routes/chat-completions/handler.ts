@@ -89,7 +89,7 @@ export async function handleCompletion(c: Context) {
 
 /** Direct path: model supports chat-completions */
 async function handleViaChatCompletions(c: Context, payload: ChatCompletionsPayload) {
-  const result = await createChatCompletions(payload)
+  const result = await createChatCompletions(payload, { signal: c.req.raw.signal })
 
   if (isCCNonStreaming(result.body)) {
     if (consola.level >= 4) {
