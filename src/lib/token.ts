@@ -1,3 +1,4 @@
+import type { DeviceCodeResponse } from '~/services/github/get-device-code'
 import fs from 'node:fs/promises'
 import consola from 'consola'
 
@@ -21,6 +22,13 @@ export async function writeGithubTokenFile(filePath: string, token: string) {
 
 function writeGithubToken(token: string) {
   return writeGithubTokenFile(PATHS.GITHUB_TOKEN_PATH, token)
+}
+
+export function redactDeviceCodeResponse(response: DeviceCodeResponse): DeviceCodeResponse {
+  return {
+    ...response,
+    device_code: '<redacted>',
+  }
 }
 
 interface RefreshTokenFailureState {
@@ -117,7 +125,7 @@ export async function setupGitHubToken(
 
     consola.info('Not logged in, getting new access token')
     const response = await getDeviceCode()
-    consola.debug('Device code response:', response)
+    consola.debug('Device code response:', redactDeviceCodeResponse(response))
 
     consola.info(
       `Please enter the code "${response.user_code}" in ${response.verification_uri}`,

@@ -9,6 +9,18 @@ import {
 
 import { sleep } from '~/lib/utils'
 
+export function redactAccessTokenPollResponse(value: unknown): unknown {
+  if (!value || typeof value !== 'object') {
+    return value
+  }
+
+  const redacted = { ...(value as Record<string, unknown>) }
+  if (typeof redacted.access_token === 'string') {
+    redacted.access_token = '<redacted>'
+  }
+  return redacted
+}
+
 export async function pollAccessToken(
   deviceCode: DeviceCodeResponse,
 ): Promise<string> {
@@ -46,7 +58,7 @@ export async function pollAccessToken(
     }
 
     const json = await response.json()
-    consola.debug('Polling access token response:', json)
+    consola.debug('Polling access token response:', redactAccessTokenPollResponse(json))
 
     const { access_token } = json as AccessTokenResponse
 
