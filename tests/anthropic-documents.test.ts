@@ -1,9 +1,14 @@
 import type { AnthropicMessagesPayload } from '~/lib/translation/types'
 
 import { Buffer } from 'node:buffer'
-import { describe, expect, test } from 'bun:test'
+import process from 'node:process'
+import { afterEach, describe, expect, mock, test } from 'bun:test'
 
-import { expandDocumentBlocks } from '../src/lib/translation/anthropic-documents'
+import {
+  DOCUMENT_URL_FETCH_ENV,
+  expandDocumentBlocks,
+  setDocumentUrlResolverForTesting,
+} from '../src/lib/translation/anthropic-documents'
 
 // Minimal valid PDF with text "Hello World"
 const MINIMAL_PDF_BASE64 = 'JVBERi0xLjAKMSAwIG9iajw8L1R5cGUvQ2F0YWxvZy9QYWdlcyAyIDAgUj4+ZW5kb2JqCjIgMCBvYmo8PC9UeXBlL1BhZ2VzL0tpZHNbMyAwIFJdL0NvdW50IDE+PmVuZG9iagozIDAgb2JqPDwvVHlwZS9QYWdlL01lZGlhQm94WzAgMCA2MTIgNzkyXS9QYXJlbnQgMiAwIFIvUmVzb3VyY2VzPDwvRm9udDw8L0YxIDQgMCBSPj4+Pi9Db250ZW50cyA1IDAgUj4+ZW5kb2JqCjQgMCBvYmo8PC9UeXBlL0ZvbnQvU3VidHlwZS9UeXBlMS9CYXNlRm9udC9IZWx2ZXRpY2E+PmVuZG9iago1IDAgb2JqCjw8L0xlbmd0aCA0ND4+CnN0cmVhbQpCVCAvRjEgMjQgVGYgMTAwIDcwMCBUZCAoSGVsbG8gV29ybGQpIFRqIEVUCmVuZHN0cmVhbQplbmRvYmoKeHJlZgowIDYKMDAwMDAwMDAwMCA2NTUzNSBmIAowMDAwMDAwMDA5IDAwMDAwIG4gCjAwMDAwMDAwNTggMDAwMDAgbiAKMDAwMDAwMDExNSAwMDAwMCBuIAowMDAwMDAwMjY2IDAwMDAwIG4gCjAwMDAwMDAzNDAgMDAwMDAgbiAKdHJhaWxlcjw8L1NpemUgNi9Sb290IDEgMCBSPj4Kc3RhcnR4cmVmCjQzNAolJUVPRg=='
@@ -15,6 +20,52 @@ function makePayload(messages: AnthropicMessagesPayload['messages']): AnthropicM
     messages,
   }
 }
+
+const originalFetch = globalThis.fetch
+const originalDocumentUrlFetchEnv = process.env[DOCUMENT_URL_FETCH_ENV]
+let restoreDocumentResolver: (() => void) | undefined
+
+function restoreDocumentUrlFetchEnv() {
+  if (originalDocumentUrlFetchEnv === undefined) {
+    delete process.env[DOCUMENT_URL_FETCH_ENV]
+    return
+  }
+
+  process.env[DOCUMENT_URL_FETCH_ENV] = originalDocumentUrlFetchEnv
+}
+
+function enableDocumentUrlFetch() {
+  process.env[DOCUMENT_URL_FETCH_ENV] = '1'
+}
+
+function disableDocumentUrlFetch() {
+  delete process.env[DOCUMENT_URL_FETCH_ENV]
+}
+
+function mockDocumentResolver(addressesByHostname: Record<string, string[]>) {
+  restoreDocumentResolver?.()
+  restoreDocumentResolver = setDocumentUrlResolverForTesting(async (hostname) => {
+    const addresses = addressesByHostname[hostname] ?? []
+    return addresses.map(address => ({
+      address,
+      family: address.includes(':') ? 6 : 4,
+    }))
+  })
+}
+
+function mockDocumentFetch(implementation: (url: string) => Promise<Response>) {
+  const fetchMock = mock(implementation)
+  // @ts-expect-error test mock only needs callable fetch shape
+  globalThis.fetch = fetchMock
+  return fetchMock
+}
+
+afterEach(() => {
+  restoreDocumentUrlFetchEnv()
+  restoreDocumentResolver?.()
+  restoreDocumentResolver = undefined
+  globalThis.fetch = originalFetch
+})
 
 describe('expandDocumentBlocks', () => {
   test('extracts text from PDF base64 document block', async () => {
@@ -552,7 +603,127 @@ describe('expandDocumentBlocks', () => {
     expect(expandDocumentBlocks(payload as any)).rejects.toThrow(/Files API/)
   })
 
+  test('disables URL document fetch by default for local translation', async () => {
+    disableDocumentUrlFetch()
+    const fetchMock = mockDocumentFetch(async () => {
+      return new Response('should not fetch')
+    })
+
+    const payload = makePayload([
+      {
+        role: 'user',
+        content: [
+          {
+            type: 'document',
+            source: {
+              type: 'url',
+              url: 'https://example.com/doc.txt',
+            },
+          },
+        ],
+      },
+    ])
+
+    await expect(expandDocumentBlocks(payload)).rejects.toThrow(DOCUMENT_URL_FETCH_ENV)
+    expect(fetchMock).toHaveBeenCalledTimes(0)
+  })
+
+  test('fetches URL documents only when explicitly enabled and resolved publicly', async () => {
+    enableDocumentUrlFetch()
+    mockDocumentResolver({ 'example.com': ['93.184.216.34'] })
+    const fetchMock = mockDocumentFetch(async (url) => {
+      expect(url).toBe('https://example.com/doc.txt')
+      return new Response('Fetched URL text', {
+        status: 200,
+        headers: { 'Content-Type': 'text/plain' },
+      })
+    })
+
+    const payload = makePayload([
+      {
+        role: 'user',
+        content: [
+          {
+            type: 'document',
+            source: {
+              type: 'url',
+              url: 'https://example.com/doc.txt',
+            },
+          },
+        ],
+      },
+    ])
+
+    await expandDocumentBlocks(payload)
+
+    const content = payload.messages[0].content as Array<{ type: string, text?: string }>
+    expect(content[0].type).toBe('text')
+    expect(content[0].text).toBe('Fetched URL text')
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  test('rejects URL hostnames that resolve to private addresses before fetch', async () => {
+    enableDocumentUrlFetch()
+    mockDocumentResolver({ 'public.example': ['127.0.0.1'] })
+    const fetchMock = mockDocumentFetch(async () => {
+      return new Response('should not fetch')
+    })
+
+    const payload = makePayload([
+      {
+        role: 'user',
+        content: [
+          {
+            type: 'document',
+            source: {
+              type: 'url',
+              url: 'https://public.example/doc.txt',
+            },
+          },
+        ],
+      },
+    ])
+
+    await expect(expandDocumentBlocks(payload)).rejects.toThrow('resolves to a blocked address')
+    expect(fetchMock).toHaveBeenCalledTimes(0)
+  })
+
+  test('re-checks redirect targets before following private resolved addresses', async () => {
+    enableDocumentUrlFetch()
+    mockDocumentResolver({
+      'public.example': ['93.184.216.34'],
+      'private.example': ['10.0.0.5'],
+    })
+    const fetchMock = mockDocumentFetch(async (url) => {
+      expect(url).toBe('https://public.example/doc.txt')
+      return new Response(null, {
+        status: 302,
+        headers: { Location: 'https://private.example/secret.txt' },
+      })
+    })
+
+    const payload = makePayload([
+      {
+        role: 'user',
+        content: [
+          {
+            type: 'document',
+            source: {
+              type: 'url',
+              url: 'https://public.example/doc.txt',
+            },
+          },
+        ],
+      },
+    ])
+
+    await expect(expandDocumentBlocks(payload)).rejects.toThrow('redirected to a hostname that resolves to a blocked address')
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
   test('blocks URLs targeting localhost and private networks', async () => {
+    enableDocumentUrlFetch()
+
     const blockedUrls = [
       'http://localhost/doc.pdf',
       'http://localhost./doc.pdf', // trailing dot
@@ -567,8 +738,13 @@ describe('expandDocumentBlocks', () => {
       'http://[::ffff:169.254.169.254]/doc.pdf', // IPv6-mapped metadata
       'http://169.254.169.254/latest/meta-data/',
       'http://10.0.0.1/internal.pdf',
+      'http://100.64.0.1/internal.pdf',
       'http://192.168.1.1/secret.pdf',
       'http://172.16.0.1/private.pdf',
+      'http://198.18.0.1/benchmark.pdf',
+      'http://203.0.113.1/test-net.pdf',
+      'http://224.0.0.1/multicast.pdf',
+      'http://255.255.255.255/broadcast.pdf',
     ]
 
     for (const blockedUrl of blockedUrls) {
@@ -592,6 +768,15 @@ describe('expandDocumentBlocks', () => {
   })
 
   test('does not block public hostnames that resemble private IP prefixes', async () => {
+    enableDocumentUrlFetch()
+    mockDocumentResolver({
+      '10.example.com': ['93.184.216.34'],
+      '172.16.docs.example.com': ['93.184.216.34'],
+    })
+    mockDocumentFetch(async () => {
+      throw new Error('network unavailable in test')
+    })
+
     // Hostnames like 10.example.com are NOT IPv4 addresses — they must not be blocked.
     // We verify by checking the error is about fetch failure, not "blocked address".
     const legitimateUrls = [

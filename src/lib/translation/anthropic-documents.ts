@@ -7,6 +7,8 @@ import type {
 } from './types'
 
 import { Buffer } from 'node:buffer'
+import { lookup } from 'node:dns/promises'
+import process from 'node:process'
 
 import consola from 'consola'
 import { JSONResponseError } from '~/lib/error'
@@ -14,6 +16,8 @@ import { logLossyAnthropicCompatibility, throwAnthropicInvalidRequestError } fro
 
 const MAX_DOCUMENT_SIZE = 32 * 1024 * 1024 // 32 MB
 const URL_FETCH_TIMEOUT = 30_000 // 30 seconds
+const MAX_REDIRECTS = 5
+export const DOCUMENT_URL_FETCH_ENV = 'COPILOT_PROXY_ALLOW_DOCUMENT_URL_FETCH'
 
 // RFC 4648 §4 – only A-Z a-z 0-9 + / = are legal, padding must form valid quartets.
 function isValidBase64(data: string): boolean {
@@ -50,16 +54,28 @@ function parseContentType(raw: string): { mediaType: string, charset?: string } 
   return { mediaType, charset }
 }
 
-// IPs and hostnames that must never be fetched (SSRF protection).
-// NOTE: This is a string-based blocklist. It cannot prevent DNS rebinding attacks
-// where an attacker-controlled hostname resolves to a private IP. Full DNS-level
-// SSRF protection would require pre-resolving the hostname and checking the IP,
-// which is not straightforward in Node/Bun. For this personal-use proxy, the
-// current protection (blocklist + redirect: 'error') is a pragmatic trade-off.
+type DocumentHostnameLookup = (hostname: string) => Promise<Array<{ address: string, family: number }>>
+
+let documentHostnameLookup: DocumentHostnameLookup = async (hostname: string) => {
+  return await lookup(hostname, { all: true, verbatim: true })
+}
+
+export function setDocumentUrlResolverForTesting(resolver: DocumentHostnameLookup): () => void {
+  const previous = documentHostnameLookup
+  documentHostnameLookup = resolver
+  return () => {
+    documentHostnameLookup = previous
+  }
+}
+
+// Hostnames that must never be fetched. URL document fetching is disabled by
+// default; when enabled, these names, private IP literals, DNS results, and
+// redirect targets are still rejected before any body is downloaded.
 const BLOCKED_HOSTNAMES = new Set([
   'localhost',
   '[::1]',
   '0.0.0.0',
+  '::',
   'metadata.google.internal',
   // Common /etc/hosts aliases for loopback (Debian, WSL, etc.)
   'ip6-localhost',
@@ -75,6 +91,11 @@ const BLOCKED_HOSTNAMES = new Set([
 // Matches a bare IPv4 address like "10.0.0.1" (no port, no hostname chars)
 const IPV4_PATTERN = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/
 
+function isDocumentUrlFetchEnabled(): boolean {
+  const value = process.env[DOCUMENT_URL_FETCH_ENV]?.trim().toLowerCase()
+  return value === '1' || value === 'true' || value === 'yes' || value === 'on'
+}
+
 function isBlockedHost(hostname: string): boolean {
   // Normalize: strip trailing dot (DNS root)
   let h = hostname.toLowerCase()
@@ -88,6 +109,12 @@ function isBlockedHost(hostname: string): boolean {
 
   // Block *.localhost subdomains (treated as loopback in modern runtimes)
   if (h.endsWith('.localhost')) {
+    return true
+  }
+
+  // Block local/private DNS suffixes that commonly resolve only inside a LAN,
+  // container, or corporate network.
+  if (h.endsWith('.local') || h.endsWith('.internal')) {
     return true
   }
 
@@ -117,11 +144,22 @@ function isBlockedHost(hostname: string): boolean {
       const ip = `${hi >> 8}.${hi & 0xFF}.${lo >> 8}.${lo & 0xFF}`
       return isPrivateIPv4(ip)
     }
+    // Unspecified
+    if (bare === '::')
+      return true
     // Unique local (fc00::/7 → fc and fd prefixes)
     if (bare.startsWith('fc') || bare.startsWith('fd'))
       return true
     // Link-local (fe80::/10 → fe80 through febf)
     if (/^fe[89ab][0-9a-f]:/.test(bare))
+      return true
+    // Multicast
+    if (bare.startsWith('ff'))
+      return true
+    // Documentation and discard-only prefixes
+    if (bare.startsWith('2001:db8:') || bare.startsWith('2001:0db8:') || bare === '2001:db8::')
+      return true
+    if (bare.startsWith('100:'))
       return true
     return false
   }
@@ -135,33 +173,53 @@ function isBlockedHost(hostname: string): boolean {
 }
 
 function isPrivateIPv4(ip: string): boolean {
-  const parts = ip.split('.')
-  const a = Number.parseInt(parts[0], 10)
-  const b = Number.parseInt(parts[1], 10)
+  const parts = ip.split('.').map(part => Number.parseInt(part, 10))
+  if (parts.length !== 4 || parts.some(part => !Number.isInteger(part) || part < 0 || part > 255)) {
+    return false
+  }
 
-  // 127.0.0.0/8 loopback
-  if (a === 127)
+  const [a, b, c] = parts
+
+  // 0.0.0.0/8 current network
+  if (a === 0)
     return true
   // 10.0.0.0/8 private
   if (a === 10)
     return true
-  // 172.16.0.0/12 private
-  if (a === 172 && b >= 16 && b <= 31)
+  // 100.64.0.0/10 carrier-grade NAT
+  if (a === 100 && b >= 64 && b <= 127)
     return true
-  // 192.168.0.0/16 private
-  if (a === 192 && b === 168)
+  // 127.0.0.0/8 loopback
+  if (a === 127)
     return true
   // 169.254.0.0/16 link-local / cloud metadata
   if (a === 169 && b === 254)
     return true
-  // 0.0.0.0
-  if (a === 0 && b === 0)
+  // 172.16.0.0/12 private
+  if (a === 172 && b >= 16 && b <= 31)
+    return true
+  // 192.0.0.0/24, 192.0.2.0/24 TEST-NET-1, 192.88.99.0/24 6to4 relay
+  if (a === 192 && b === 0 && (c === 0 || c === 2))
+    return true
+  if (a === 192 && b === 88 && c === 99)
+    return true
+  // 192.168.0.0/16 private
+  if (a === 192 && b === 168)
+    return true
+  // 198.18.0.0/15 benchmarking, 198.51.100.0/24 TEST-NET-2
+  if (a === 198 && (b === 18 || b === 19))
+    return true
+  if (a === 198 && b === 51 && c === 100)
+    return true
+  // 203.0.113.0/24 TEST-NET-3
+  if (a === 203 && b === 0 && c === 113)
+    return true
+  // 224.0.0.0/4 multicast and 240.0.0.0/4 reserved, including 255.255.255.255
+  if (a >= 224)
     return true
 
   return false
 }
-
-const MAX_REDIRECTS = 5
 
 /**
  * Fetches a URL with manual redirect following, re-checking each hop against
@@ -173,11 +231,7 @@ async function fetchWithSsrfCheck(initialUrl: string): Promise<Response> {
 
   for (let i = 0; i <= MAX_REDIRECTS; i++) {
     const parsed = new URL(url)
-    if (isBlockedHost(parsed.hostname)) {
-      throwAnthropicInvalidRequestError(
-        'Document URL redirected to a blocked address. URLs targeting localhost, private networks, or cloud metadata endpoints are not allowed.',
-      )
-    }
+    await assertDocumentUrlFetchTargetAllowed(parsed, i > 0)
 
     const response = await fetch(url, {
       signal: AbortSignal.timeout(URL_FETCH_TIMEOUT),
@@ -199,6 +253,65 @@ async function fetchWithSsrfCheck(initialUrl: string): Promise<Response> {
   }
 
   throwAnthropicInvalidRequestError(`Document URL exceeded maximum of ${MAX_REDIRECTS} redirects`)
+}
+
+async function assertDocumentUrlFetchTargetAllowed(url: URL, isRedirect: boolean): Promise<void> {
+  if (!['http:', 'https:'].includes(url.protocol)) {
+    throwAnthropicInvalidRequestError(
+      isRedirect
+        ? 'Document URL redirected to a non-http(s) URL'
+        : 'Document URL must use http or https protocol',
+    )
+  }
+
+  if (isBlockedHost(url.hostname)) {
+    throwAnthropicInvalidRequestError(
+      isRedirect
+        ? 'Document URL redirected to a blocked address. URLs targeting localhost, private networks, or cloud metadata endpoints are not allowed.'
+        : 'Document URL points to a blocked address. URLs targeting localhost, private networks, or cloud metadata endpoints are not allowed.',
+    )
+  }
+
+  await assertDocumentHostnameResolvesPublicly(url.hostname, isRedirect)
+}
+
+async function assertDocumentHostnameResolvesPublicly(hostname: string, isRedirect: boolean): Promise<void> {
+  const lookupHostname = normalizeLookupHostname(hostname)
+  let addresses: Array<{ address: string, family: number }>
+
+  try {
+    addresses = await documentHostnameLookup(lookupHostname)
+  }
+  catch (error) {
+    throwAnthropicInvalidRequestError(
+      `Failed to resolve document URL hostname '${lookupHostname}': ${error instanceof Error ? error.message : String(error)}`,
+    )
+  }
+
+  if (addresses.length === 0) {
+    throwAnthropicInvalidRequestError(`Failed to resolve document URL hostname '${lookupHostname}': no addresses returned`)
+  }
+
+  const blockedAddress = addresses.find(result => isBlockedHost(result.address))
+  if (!blockedAddress)
+    return
+
+  throwAnthropicInvalidRequestError(
+    isRedirect
+      ? `Document URL redirected to a hostname that resolves to a blocked address (${blockedAddress.address}). URLs targeting localhost, private networks, or cloud metadata endpoints are not allowed.`
+      : `Document URL hostname resolves to a blocked address (${blockedAddress.address}). URLs targeting localhost, private networks, or cloud metadata endpoints are not allowed.`,
+  )
+}
+
+function normalizeLookupHostname(hostname: string): string {
+  let h = hostname.toLowerCase()
+  if (h.endsWith('.')) {
+    h = h.slice(0, -1)
+  }
+  if (h.startsWith('[') && h.endsWith(']')) {
+    h = h.slice(1, -1)
+  }
+  return h
 }
 
 /**
@@ -495,9 +608,9 @@ async function resolveDocumentSource(
     )
   }
 
-  if (isBlockedHost(url.hostname)) {
+  if (!isDocumentUrlFetchEnabled()) {
     throwAnthropicInvalidRequestError(
-      'Document URL points to a blocked address. URLs targeting localhost, private networks, or cloud metadata endpoints are not allowed.',
+      `Document URL sources are disabled for local translation. Set ${DOCUMENT_URL_FETCH_ENV}=1 to allow the proxy to fetch document URLs, or provide document content inline using base64, text, or content source types.`,
     )
   }
 

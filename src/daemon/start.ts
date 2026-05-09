@@ -48,6 +48,8 @@ const DAEMON_ENV_ALLOWLIST = [
   'GITHUB_TOKEN',
   // Proxy local security configuration
   'COPILOT_PROXY_CORS_ORIGINS',
+  'COPILOT_PROXY_MAX_JSON_BODY_BYTES',
+  'COPILOT_PROXY_ALLOW_DOCUMENT_URL_FETCH',
   // Platform-specific (Windows)
   'APPDATA',
   'LOCALAPPDATA',

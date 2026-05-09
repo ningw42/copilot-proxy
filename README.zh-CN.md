@@ -237,6 +237,10 @@ Copilot API 使用子命令结构，主要命令如下：
 
 CORS 默认只允许本地浏览器来源，例如 `http://localhost:*`、`http://127.0.0.1:*` 和 `http://[::1]:*`。托管的用量面板来源只允许访问 `/usage`。如需添加其他精确浏览器来源，可设置逗号分隔的 `COPILOT_PROXY_CORS_ORIGINS`，例如 `COPILOT_PROXY_CORS_ORIGINS=https://internal.example.com`。
 
+入站 JSON 请求体默认限制为 32 MiB。如需覆盖，可将 `COPILOT_PROXY_MAX_JSON_BODY_BYTES` 设置为正数字节数。
+
+当所选模型走 Copilot `/v1/messages` 后端时，Anthropic document URL source 会原样 native 转发。需要本地翻译的 document URL 抓取默认关闭；只有在你明确信任客户端和 URL 时，才设置 `COPILOT_PROXY_ALLOW_DOCUMENT_URL_FETCH=1`。即使开启，代理仍会在抓取前和 redirect 后拒绝 localhost、私网、云元数据以及保留 DNS/IP 目标。
+
 `GET /token` 额外限制为 loopback 请求和同源浏览器读取，不应作为通用浏览器 API 使用。
 
 ### auth 参数

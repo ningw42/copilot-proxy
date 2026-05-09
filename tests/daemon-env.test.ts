@@ -31,6 +31,19 @@ describe('filterEnvForDaemon', () => {
     expect(filtered.NO_PROXY).toBe('localhost')
   })
 
+  test('keeps proxy security env vars', () => {
+    const env = {
+      PATH: '/usr/bin',
+      COPILOT_PROXY_CORS_ORIGINS: 'https://internal.example.com',
+      COPILOT_PROXY_MAX_JSON_BODY_BYTES: '1048576',
+      COPILOT_PROXY_ALLOW_DOCUMENT_URL_FETCH: '1',
+    }
+    const filtered = filterEnvForDaemon(env)
+    expect(filtered.COPILOT_PROXY_CORS_ORIGINS).toBe('https://internal.example.com')
+    expect(filtered.COPILOT_PROXY_MAX_JSON_BODY_BYTES).toBe('1048576')
+    expect(filtered.COPILOT_PROXY_ALLOW_DOCUMENT_URL_FETCH).toBe('1')
+  })
+
   test('keeps TLS certificate env vars for corporate CA setups', () => {
     const env = {
       PATH: '/usr/bin',
